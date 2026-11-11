@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+
+import { TripProvider } from '@/components/TripContext';
+
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -9,7 +12,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="sv">
-      <body>{children}</body>
+      <body>
+        <TripProvider>{children}</TripProvider>
+      </body>
     </html>
   );
 }

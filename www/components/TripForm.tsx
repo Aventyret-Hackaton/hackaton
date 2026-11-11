@@ -2,31 +2,25 @@
 
 import { useState } from 'react';
 
+import { useRouter } from 'next/navigation';
+
 import { PlaceAutocomplete } from '@/components/PlaceAutocomplete';
-import { TripView } from '@/components/TripView';
+import { useTrip } from '@/components/TripContext';
 import type { Place } from '@/lib/places';
 
 export const TripForm = (): React.JSX.Element => {
+  const router = useRouter();
+  const { setTrip } = useTrip();
   const [origin, setOrigin] = useState<Place | null>(null);
   const [destination, setDestination] = useState<Place | null>(null);
-  const [trip, setTrip] = useState<{ origin: Place; destination: Place } | null>(null);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     if (origin && destination) {
       setTrip({ origin, destination });
+      router.push('/trip');
     }
   };
-
-  const handleReset = (): void => {
-    setTrip(null);
-    setOrigin(null);
-    setDestination(null);
-  };
-
-  if (trip) {
-    return <TripView origin={trip.origin} destination={trip.destination} onReset={handleReset} />;
-  }
 
   return (
     <>
