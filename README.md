@@ -1,5 +1,21 @@
 # hackaton
 
+> **Hackaton** — a Next.js app built on the [Äventyret rig](https://github.com/Aventyret/aventyret-rig).
+
+## About this project
+
+Hackaton is a Next.js (App Router) frontend served as the `www` service through
+the rig. It is the starting base for the hackathon project — build on top of it
+in `www/app`.
+
+- **Stack:** `nextjs` (rig release 2.38.0) · **Service:** `www`
+- **Local URL:** https://www.hackaton.test
+- **Repo:** https://github.com/Aventyret-Hackaton/hackaton
+  (clone: `gh repo clone Aventyret-Hackaton/hackaton`)
+- **App code:** `www/app` — pages, layouts, components
+- **Env:** `.env.template` + `.env.rig`, generated into `.env` by `rig env`
+
+
 <!-- rig:start -->
 <!-- Written by 'rig self update'. Change it in the rig, not here. -->
 
