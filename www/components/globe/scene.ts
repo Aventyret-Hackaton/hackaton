@@ -18,7 +18,7 @@ import {
   WebGLRenderer
 } from 'three';
 
-import { createEarth, createMoonGeometry, GLOBE_RADIUS, MOON_RADIUS } from '@/lib/globe/earth';
+import { createMoonGeometry, DEFAULT_EARTH_LEVEL, EARTH_LEVEL_COUNT, GLOBE_RADIUS, MOON_RADIUS } from '@/lib/globe/earth';
 import { DEG, latLonToUnit } from '@/lib/globe/geo';
 import type { LatLon } from '@/lib/globe/geo';
 import { ARRIVAL_DAY, LEGS, locateJourney, SIGHTS, STOCKHOLM } from '@/lib/globe/journey';
@@ -29,10 +29,11 @@ import { buildVoxelGeometry } from '@/lib/voxel/mesher';
 import { buildModel } from '@/lib/voxel/model';
 import { FLAGS_MODEL, SIGHT_MODEL_DEFS, VEHICLE_MODELS } from '@/lib/voxel/models';
 
+import { createGlobeLod } from './globeLod';
+import type { LodBlend } from './globeLod';
 import { addVoxelLights } from './thumbnails';
 
 const BACKGROUND = 0x08162b;
-const ROUTE_RADIUS = GLOBE_RADIUS + 2.7;
 const DASH_SPACING = 2.7 * DEG;
 const ARROW_EVERY = 6;
 const COLOR_AHEAD = 0xf4905c;
@@ -50,7 +51,10 @@ const MOON_CAMERA_MARGIN = 1.4;
 
 const CAMERA_FOV = 30;
 const CAMERA_START = 152;
-const CAMERA_MIN = 92;
+const CAMERA_MIN = 70;
+// One key press moves the camera this much, and on to the next detail level.
+const ZOOM_STEP_RATIO = 1.265;
+const LOD_BUILD_BUDGET_MS = 5;
 const CAMERA_MAX = 300;
 const VIEW_LATITUDE = 14 * DEG;
 const PITCH_LIMIT = 1.25;
@@ -120,7 +124,10 @@ export type GlobeSceneHandle = {
   zoom: (direction: number) => void;
 };
 
-type Marker = { leg: number; fraction: number };
+type Marker = { leg: number; fraction: number; unit: Vector3; heading: Vector3 };
+
+// Something standing on the ground, with its surface radius on every detail level.
+type Landmark = { mesh: Mesh; unit: Vector3; scale: number; radii: number[]; label: Label | null; labelLift: number };
 
 type Label = { element: HTMLElement; anchor: Vector3; closeness: number };
 
@@ -203,8 +210,14 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
 
   const globe = new Group();
   scene.add(globe);
-  const earth = createEarth();
-  globe.add(new Mesh(track(earth.geometry), voxelMaterial));
+  const landmarks: Landmark[] = [];
+  const lod = createGlobeLod({
+    onLevelReady: (level): void => {
+      for (const landmark of landmarks) landmark.radii[level.index] = level.surfaceRadius(landmark.unit);
+    }
+  });
+  globe.add(lod.group);
+  let routeRadius = lod.defaultLevel.routeRadius;
 
   const scratch = {
     a: new Vector3(),
@@ -233,7 +246,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
   tracks.forEach((legTrack, leg) => {
     let at = carry;
     while (at < legTrack.length) {
-      const marker = { leg, fraction: at / legTrack.length };
+      const marker = { leg, fraction: at / legTrack.length, unit: new Vector3(), heading: new Vector3() };
       if (markerCount % ARROW_EVERY === ARROW_EVERY - 1) arrows.push(marker);
       else dashes.push(marker);
       markerCount += 1;
@@ -249,16 +262,24 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     return target.lengthSq() < 1e-12 ? eastOf(to, target) : target.normalize();
   };
 
+  const placeMarkers = (mesh: InstancedMesh, markers: Marker[]): void => {
+    markers.forEach((marker, index) => {
+      mesh.setMatrixAt(index, surfaceMatrix(marker.unit, routeRadius, marker.heading, scratch.matrix));
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+
   const createMarkers = (geometry: BufferGeometry, markers: Marker[]): InstancedMesh => {
     const mesh = new InstancedMesh(track(geometry), glowMaterial, markers.length);
     markers.forEach((marker, index) => {
       const legTrack = tracks[marker.leg];
-      const heading = headingAt(legTrack, marker.fraction, scratch.c);
-      const unit = trackPoint(legTrack, marker.fraction, scratch.a);
-      mesh.setMatrixAt(index, surfaceMatrix(unit, ROUTE_RADIUS, heading, scratch.matrix));
+      headingAt(legTrack, marker.fraction, marker.heading);
+      trackPoint(legTrack, marker.fraction, marker.unit);
       mesh.setColorAt(index, scratch.color.setHex(COLOR_AHEAD));
     });
-    mesh.instanceMatrix.needsUpdate = true;
+    // The markers move with the detail level, so their bounds are not fixed.
+    mesh.frustumCulled = false;
+    placeMarkers(mesh, markers);
     globe.add(mesh);
     return mesh;
   };
@@ -290,14 +311,22 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     vehicleMeshes.set(id, mesh);
   });
 
-  const placeStatic = (geometry: BufferGeometry, position: LatLon, scale: number): Vector3 => {
+  const placeLandmark = (landmark: Landmark, radius: number): void => {
+    const { mesh, unit, scale, label, labelLift } = landmark;
+    mesh.matrix.copy(surfaceMatrix(unit, radius, eastOf(unit, scratch.c), scratch.matrix)).scale(scratch.a.setScalar(scale));
+    mesh.matrixWorldNeedsUpdate = true;
+    label?.anchor.copy(unit).multiplyScalar(radius + labelLift);
+  };
+
+  const addLandmark = (geometry: BufferGeometry, position: LatLon, scale: number, label: Label | null, labelLift: number): void => {
     const unit = latLonToUnit(position);
-    const radius = earth.surfaceRadius(unit);
     const mesh = new Mesh(track(geometry), voxelMaterial);
     mesh.matrixAutoUpdate = false;
-    mesh.matrix.copy(surfaceMatrix(unit, radius, eastOf(unit, scratch.c), scratch.matrix)).scale(scratch.a.setScalar(scale));
     globe.add(mesh);
-    return unit;
+    const radii = Array.from({ length: EARTH_LEVEL_COUNT }, (_, index) => lod.level(index)?.surfaceRadius(unit) ?? Number.NaN);
+    const landmark = { mesh, unit, scale, radii, label, labelLift };
+    landmarks.push(landmark);
+    placeLandmark(landmark, radii[DEFAULT_EARTH_LEVEL]);
   };
 
   const createLabel = (className: string, text: string, anchor: Vector3): Label => {
@@ -311,11 +340,11 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
 
   const labels: Label[] = SIGHTS.map((sight) => {
     const built = buildModel(SIGHT_MODEL_DEFS[sight.modelId]);
-    const unit = placeStatic(built.geometry, sight.position, SIGHT_SCALE);
-    const height = earth.surfaceRadius(unit) + built.size.y * SIGHT_SCALE + 0.6;
-    return createLabel(options.sightLabelClassName, sight.name, unit.clone().multiplyScalar(height));
+    const label = createLabel(options.sightLabelClassName, sight.name, new Vector3());
+    addLandmark(built.geometry, sight.position, SIGHT_SCALE, label, built.size.y * SIGHT_SCALE + 0.6);
+    return label;
   });
-  placeStatic(buildModel(FLAGS_MODEL).geometry, [STOCKHOLM[0] + FLAGS_OFFSET[0], STOCKHOLM[1] + FLAGS_OFFSET[1]], FLAGS_SCALE);
+  addLandmark(buildModel(FLAGS_MODEL).geometry, [STOCKHOLM[0] + FLAGS_OFFSET[0], STOCKHOLM[1] + FLAGS_OFFSET[1]], FLAGS_SCALE, null, 0);
 
   const hereLabel = createLabel(options.hereLabelClassName, options.hereLabelText, new Vector3());
 
@@ -333,7 +362,11 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
   let targetYaw = 0;
   let targetPitch = 0;
   let distance = CAMERA_START;
+  let zoomLevel = DEFAULT_EARTH_LEVEL;
   let zoomFactor = 1;
+  let bufferWidth = 1;
+  let bufferHeight = 1;
+  let appliedBlend = -1;
   let fitFactor = 1;
   let spinX = 0;
   let spinY = 0;
@@ -392,7 +425,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     const legTrack = tracks[legIndex];
     trackPoint(legTrack, legProgress, vehicleUnit);
     headingAt(legTrack, legProgress, vehicleHeading);
-    surfaceMatrix(vehicleUnit, ROUTE_RADIUS, vehicleHeading, vehicleHolder.matrix);
+    surfaceMatrix(vehicleUnit, routeRadius, vehicleHeading, vehicleHolder.matrix);
 
     const activeId = LEGS[legIndex].modelId;
     const pose = reducedMotion ? 0 : Math.floor(elapsed * POSES_PER_SECOND) / POSES_PER_SECOND;
@@ -484,7 +517,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
     const vehicleHeight = vehicleHeights.get(LEGS[legIndex].modelId) ?? 0;
-    hereLabel.anchor.copy(vehicleUnit).multiplyScalar(ROUTE_RADIUS + vehicleHeight + 1.4);
+    hereLabel.anchor.copy(vehicleUnit).multiplyScalar(routeRadius + vehicleHeight + 1.4);
     // Sights are named near the traveller, or near the view centre when steering freely.
     if (status.follow) focus.copy(vehicleUnit);
     else focus.set(0, 0, 1).applyQuaternion(scratch.rotation.copy(globe.quaternion).invert());
@@ -499,11 +532,35 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     positionLabel(hereLabel, status.started && !status.finished, width, height);
   };
 
+  // Moves the route and everything on the ground to the height of the visible detail.
+  const applyBlend = ({ from, to, amount }: LodBlend): void => {
+    const key = from * 10 + amount;
+    if (key === appliedBlend) return;
+    appliedBlend = key;
+    const mix = (coarse: number, fine: number): number => (amount <= 0 ? coarse : amount >= 1 ? fine : coarse + (fine - coarse) * amount);
+    routeRadius = mix(lod.level(from)?.routeRadius ?? routeRadius, lod.level(to)?.routeRadius ?? routeRadius);
+    placeMarkers(dashMesh, dashes);
+    placeMarkers(arrowMesh, arrows);
+    for (const landmark of landmarks) {
+      placeLandmark(landmark, mix(landmark.radii[from], landmark.radii[to]));
+    }
+  };
+
+  // The detail level follows the camera distance, so it changes at the pace of the zoom.
+  const updateDetail = (): void => {
+    lod.build(LOD_BUILD_BUDGET_MS);
+    const zoom = distance / (CAMERA_START * fitFactor);
+    const coordinate = DEFAULT_EARTH_LEVEL - Math.log(zoom) / Math.log(ZOOM_STEP_RATIO);
+    applyBlend(lod.update(coordinate, bufferWidth, bufferHeight));
+  };
+
   const resize = (): void => {
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
     if (width === 0 || height === 0) return;
-    renderer.setSize(Math.ceil(width / PIXEL_SCALE), Math.ceil(height / PIXEL_SCALE), false);
+    bufferWidth = Math.ceil(width / PIXEL_SCALE);
+    bufferHeight = Math.ceil(height / PIXEL_SCALE);
+    renderer.setSize(bufferWidth, bufferHeight, false);
     camera.aspect = width / height;
     fitFactor = 1 / Math.min(1, camera.aspect);
     camera.updateProjectionMatrix();
@@ -518,6 +575,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     elapsed += delta;
     if (options.getProgress) syncToProgress(options.getProgress());
     else advance(delta);
+    updateDetail();
     updateVehicle();
     updateCamera(delta);
     updateMoon();
@@ -550,6 +608,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
       observer.disconnect();
       for (const label of [...labels, hereLabel]) label.element.remove();
       for (const item of disposables) item.dispose();
+      lod.dispose();
       renderer.dispose();
     },
     toggleRunning: (): void => {
@@ -571,7 +630,8 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
       if ((x !== 0 || y !== 0) && status.follow) setStatus({ follow: false });
     },
     zoom: (direction: number): void => {
-      zoomFactor = clamp(zoomFactor * (direction > 0 ? 1.15 : 1 / 1.15), 0.5, 1.8);
+      zoomLevel = clamp(zoomLevel + (direction > 0 ? -1 : 1), 0, EARTH_LEVEL_COUNT - 1);
+      zoomFactor = ZOOM_STEP_RATIO ** (DEFAULT_EARTH_LEVEL - zoomLevel);
     }
   };
 };

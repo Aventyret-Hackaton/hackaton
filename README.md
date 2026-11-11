@@ -32,6 +32,8 @@ in `www/app`.
 - **`/globe`** — standalone demo on its own clock, keyboard only
   (space, arrow keys, `+`/`-`, `N`/`B`, `F`, `R`, `C`).
 - **`/globe/assets`** — contact sheet of every voxel model.
+- The globe has six detail levels, one per zoom step. `globeLod.ts` in
+  `www/components/globe` blends between them as the camera moves.
 - **Code:** scene and components in `www/components/globe`, voxel engine and
   models in `www/lib/voxel`, route and sights in `www/lib/globe/journey.ts`.
 - `www/components/TripGlobe.tsx` is no longer used.
