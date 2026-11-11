@@ -1,9 +1,9 @@
 export type TripPhase = 'outbound' | 'jetty' | 'globe' | 'inbound' | 'arrived';
 
 // Trip seconds per real second, 1 is real time.
-export const TRIP_SPEEDS = [1, 100, 10000, 100000, 1000000, 10000000] as const;
+export const TRIP_SPEEDS = [1, 100, 1000, 10000, 100000, 1000000, 10000000] as const;
 // The last leg, from Slussen, never plays faster than this.
-const INBOUND_MAX_SPEED = 100;
+const INBOUND_MAX_SPEED = 300;
 
 export type Timeline = {
   // performance.now() timestamp of when the current speed was set.
@@ -44,8 +44,8 @@ export const getEffectiveSpeed = ({ speed }: Timeline, phase: TripPhase | null):
 // The next speed up from the current one, starting over after the fastest allowed.
 export const getNextSpeed = (timeline: Timeline, phase: TripPhase | null): number => {
   const current = getEffectiveSpeed(timeline, phase);
-  const next = TRIP_SPEEDS.find((speed) => speed > current);
-  return next === undefined || (phase === 'inbound' && next > INBOUND_MAX_SPEED) ? TRIP_SPEEDS[0] : next;
+  if (phase === 'inbound' && current >= INBOUND_MAX_SPEED) return TRIP_SPEEDS[0];
+  return TRIP_SPEEDS.find((speed) => speed > current) ?? TRIP_SPEEDS[0];
 };
 
 // The same trip continuing from where it is, at another speed.
