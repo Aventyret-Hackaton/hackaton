@@ -31,6 +31,7 @@ import { hash3 } from '@/lib/voxel/hash';
 import { buildVoxelGeometry } from '@/lib/voxel/mesher';
 import { buildModel, buildPlantedModel } from '@/lib/voxel/model';
 import { GOAL_FLAG_MODEL, SIGHT_MODEL_DEFS, START_FLAG_MODEL, VEHICLE_MODELS } from '@/lib/voxel/models';
+import { createPosedModel, type PosedModel } from '@/lib/voxel/posed';
 
 import { createCityIntro } from './cityIntro';
 import { createGlobeLod } from './globeLod';
@@ -381,16 +382,13 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
   const vehicleHolder = new Group();
   vehicleHolder.matrixAutoUpdate = false;
   globe.add(vehicleHolder);
-  const vehicleMeshes = new Map<VehicleId, Mesh>();
-  const vehicleHeights = new Map<VehicleId, number>();
+  const vehicles = new Map<VehicleId, PosedModel>();
   (Object.keys(VEHICLES) as VehicleId[]).forEach((id) => {
-    const built = buildModel(VEHICLE_MODELS[id]);
-    const mesh = new Mesh(track(built.geometry), voxelMaterial);
-    mesh.scale.setScalar(VEHICLES[id].scale);
-    vehicleHeights.set(id, built.size.y * VEHICLES[id].scale);
-    mesh.visible = false;
-    vehicleHolder.add(mesh);
-    vehicleMeshes.set(id, mesh);
+    const vehicle = track(createPosedModel(VEHICLE_MODELS[id], voxelMaterial));
+    vehicle.mesh.scale.setScalar(VEHICLES[id].scale);
+    vehicle.mesh.visible = false;
+    vehicleHolder.add(vehicle.mesh);
+    vehicles.set(id, vehicle);
   });
 
   // During the opening a landmark is as small as the view is close, and may still be in the city.
@@ -479,6 +477,8 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
   let spinY = 0;
   let idleTime = 0;
   let elapsed = 0;
+  // Seconds the traveller has been seen moving, which is what its poses follow.
+  let travelled = 0;
   let paintedKey = -1;
   // How far the opening has pulled back, and what that does to the things on the globe:
   // they keep their size on screen, and slide from the city to their place.
@@ -544,7 +544,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     headingAt(legTrack, legProgress, vehicleHeading);
   };
 
-  const updateVehicle = (): void => {
+  const updateVehicle = (delta: number): void => {
     const activeId = LEGS[legIndex].modelId;
     const position = scratch.d.copy(vehicleUnit).multiplyScalar(routeRadius);
     if (introShift < 1) position.lerpVectors(vehicleHome, position, introShift);
@@ -554,15 +554,18 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     const size = introScale * clamp((introEase - TRAVELLER_APPEARS[0]) / (TRAVELLER_APPEARS[1] - TRAVELLER_APPEARS[0]), 0, 1);
     surfaceMatrix(up, height, vehicleHeading, vehicleHolder.matrix).scale(scratch.a.setScalar(size));
     vehicleHolder.visible = size > 0;
-    vehicleTop.copy(up).multiplyScalar(height + ((vehicleHeights.get(activeId) ?? 0) + 1.4) * introScale);
+    const { scale, motion } = VEHICLES[activeId];
+    vehicleTop.copy(up).multiplyScalar(height + ((vehicles.get(activeId)?.size.y ?? 0) * scale + 1.4) * introScale);
 
+    // The poses only play for the traveller on show, and stand still when it does.
+    if (status.running && vehicleHolder.visible && !reducedMotion) travelled += delta;
     const pose = reducedMotion ? 0 : Math.floor(elapsed * POSES_PER_SECOND) / POSES_PER_SECOND;
     const moving = status.running ? 1 : 0.35;
-    vehicleMeshes.forEach((mesh, id) => {
+    vehicles.forEach((vehicle, id) => {
+      const { mesh } = vehicle;
       mesh.visible = id === activeId;
       if (!mesh.visible) return;
-      const { motion } = VEHICLES[id];
-      mesh.position.y = motion === 'walk' ? Math.abs(Math.sin(pose * 7)) * 0.22 * moving : 0;
+      vehicle.pose(travelled);
       mesh.rotation.x = motion === 'float' ? Math.sin(pose * 2.4) * 0.07 : 0;
       mesh.rotation.z = motion === 'float' ? Math.sin(pose * 1.7) * 0.04 : motion === 'roll' ? Math.sin(pose * 19) * 0.012 * moving : 0;
     });
@@ -774,7 +777,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     updateDetail();
     locateVehicle();
     updateCamera(delta);
-    updateVehicle();
+    updateVehicle(delta);
     updateLayout();
     updateMoon();
     updateRouteColors();

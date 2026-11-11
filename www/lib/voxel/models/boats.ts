@@ -68,7 +68,30 @@ const paintCruiser = (g: VoxelGrid): void => {
   });
 };
 
-const paintRaft = (g: VoxelGrid): void => {
+const RAFT_FRAMES = 8;
+// The wind comes and goes: how many layers the sail bulges ahead of the yard.
+const SAIL_BULGE = [1, 2, 1, 0];
+// Where the tip of the pennant is relative to its root, and foam around the logs, by turns.
+const PENNANT_TIP = [0, 1, 0, -1];
+const RAFT_FOAM: readonly (readonly (readonly [x: number, z: number])[])[] = [
+  [
+    [17, 1],
+    [18, 4],
+    [17, 8],
+    [-2, 2],
+    [-3, 6]
+  ],
+  [
+    [18, 2],
+    [17, 6],
+    [18, 9],
+    [-3, 3],
+    [-2, 7]
+  ]
+];
+
+const paintRaft = (g: VoxelGrid, frame: number): void => {
+  const gust = Math.floor(frame / 2) % 4;
   for (let log = 0; log < 5; log += 1) {
     const start = log % 2 === 0 ? 0 : -1;
     const end = log % 3 === 0 ? 15 : 16;
@@ -79,14 +102,20 @@ const paintRaft = (g: VoxelGrid): void => {
   }
   g.fill(2, 2, 2, 2, 0, 9, P.darkWood);
   g.fill(13, 13, 2, 2, 0, 9, P.darkWood);
+  for (const [x, z] of RAFT_FOAM[gust % 2]) g.set(x, 0, z, P.foam);
 
   g.fill(9, 9, 2, 14, 5, 5, P.darkWood);
   g.fill(9, 9, 13, 13, 0, 9, P.wood);
   g.fill(10, 10, 5, 12, 1, 8, P.cream);
-  g.fill(11, 11, 7, 10, 3, 6, P.cream);
+  if (SAIL_BULGE[gust] >= 1) g.fill(11, 11, 7, 10, 3, 6, P.cream);
+  if (SAIL_BULGE[gust] >= 2) {
+    g.fill(11, 11, 6, 11, 2, 7, P.cream);
+    g.fill(12, 12, 8, 9, 4, 5, P.cream);
+  }
   g.fill(10, 10, 6, 7, 2, 3, P.coral);
   g.fill(10, 10, 10, 11, 6, 7, P.ochre);
-  g.fill(7, 8, 14, 14, 5, 5, P.coral);
+  g.set(8, 14, 5, P.coral);
+  g.set(7, 14 + PENNANT_TIP[frame % 4], 5, P.coral);
 
   g.fill(12, 14, 2, 3, 1, 3, P.ochre);
   g.fill(12, 14, 4, 4, 1, 3, P.darkWood);
@@ -95,7 +124,13 @@ const paintRaft = (g: VoxelGrid): void => {
   g.set(0, 3, 8, P.dark);
   g.set(-1, 4, 8, P.dark);
   g.set(-2, 5, 8, P.dark);
-  g.fill(-3, -3, 1, 4, 8, 8, P.cream);
+  // The current drags the fishing line astern now and then.
+  if (gust % 2 === 0) {
+    g.fill(-3, -3, 1, 4, 8, 8, P.cream);
+  } else {
+    g.fill(-3, -3, 3, 4, 8, 8, P.cream);
+    g.fill(-4, -4, 1, 2, 8, 8, P.cream);
+  }
 
   paintMiniFigure(g, 5, 2, 4, {
     skin: P.skinTan,
@@ -244,7 +279,12 @@ export const BOAT_MODELS = {
     label: 'Fritidsbåt med grälande par',
     paint: paintCruiser
   },
-  raft: { id: 'raft', label: 'Flotte', paint: paintRaft },
+  raft: {
+    id: 'raft',
+    label: 'Flotte',
+    paint: (g): void => paintRaft(g, 0),
+    sequence: { frames: RAFT_FRAMES, framesPerSecond: 5, paint: paintRaft }
+  },
   swan: { id: 'swan', label: 'Svantrampbåt', paint: paintSwan },
   flamingo: { id: 'flamingo', label: 'Badflamingo', paint: paintFlamingo },
   ship: { id: 'ship', label: 'Containerfartyg', paint: paintShip }

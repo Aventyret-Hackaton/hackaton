@@ -1,12 +1,12 @@
-import { BoxGeometry, Color, Fog, Group, InstancedBufferAttribute, InstancedMesh, Mesh, MeshLambertMaterial, PerspectiveCamera, Scene, Vector3, WebGLRenderer } from 'three';
+import { BoxGeometry, Color, Fog, Group, InstancedBufferAttribute, InstancedMesh, MeshLambertMaterial, PerspectiveCamera, Scene, Vector3, WebGLRenderer } from 'three';
 
 import { createSurfaceLookup, SHALLOW, type Surface } from '@/lib/globe/earth';
 import { DEG } from '@/lib/globe/geo';
 import type { VehicleId } from '@/lib/globe/journey';
 import { hash3, valueNoise3 } from '@/lib/voxel/hash';
-import { buildModel } from '@/lib/voxel/model';
 import { VEHICLE_MODELS } from '@/lib/voxel/models';
 import { P } from '@/lib/voxel/palette';
+import { createPosedModel, type PosedModel } from '@/lib/voxel/posed';
 
 import { type Motion, VEHICLES } from './globe/scene';
 import { addVoxelLights } from './globe/thumbnails';
@@ -295,28 +295,30 @@ export const createStreetScene = ({ canvas, reducedMotion, getTraveller }: Stree
   // Vehicles are built the first time they are needed.
   const holder = new Group();
   scene.add(holder);
-  const vehicles = new Map<VehicleId, Mesh>();
-  const showVehicle = (id: VehicleId): Mesh => {
-    let mesh = vehicles.get(id);
-    if (!mesh) {
-      mesh = new Mesh(buildModel(VEHICLE_MODELS[id]).geometry, material);
-      mesh.scale.setScalar(VEHICLES[id].scale * VEHICLE_SCALE);
-      holder.add(mesh);
-      vehicles.set(id, mesh);
+  const vehicles = new Map<VehicleId, PosedModel>();
+  const showVehicle = (id: VehicleId): PosedModel => {
+    let vehicle = vehicles.get(id);
+    if (!vehicle) {
+      vehicle = createPosedModel(VEHICLE_MODELS[id], material);
+      vehicle.mesh.scale.setScalar(VEHICLES[id].scale * VEHICLE_SCALE);
+      holder.add(vehicle.mesh);
+      vehicles.set(id, vehicle);
     }
     vehicles.forEach((other) => {
-      other.visible = other === mesh;
+      other.mesh.visible = other === vehicle;
     });
-    return mesh;
+    return vehicle;
   };
 
-  const updateVehicle = (elapsed: number): void => {
+  // The poses follow the time spent moving, so they stand still when the traveller does.
+  const updateVehicle = (elapsed: number, travelled: number): void => {
     const { motion } = VEHICLES[traveller.modelId];
-    const mesh = showVehicle(traveller.modelId);
+    const vehicle = showVehicle(traveller.modelId);
+    const { mesh } = vehicle;
     const pose = reducedMotion ? 0 : Math.floor(elapsed * POSES_PER_SECOND) / POSES_PER_SECOND;
     const moving = traveller.moving ? 1 : 0.35;
+    vehicle.pose(travelled);
     holder.position.y = motion === 'float' ? WATER_LEVEL : 0;
-    mesh.position.y = motion === 'walk' ? Math.abs(Math.sin(pose * 7)) * 0.22 * moving : 0;
     mesh.rotation.x = motion === 'float' ? Math.sin(pose * 2.4) * 0.07 : 0;
     mesh.rotation.z = motion === 'float' ? Math.sin(pose * 1.7) * 0.04 : motion === 'roll' ? Math.sin(pose * 19) * 0.012 * moving : 0;
   };
@@ -335,6 +337,7 @@ export const createStreetScene = ({ canvas, reducedMotion, getTraveller }: Stree
 
   let frame = 0;
   let elapsed = 0;
+  let travelled = 0;
   let previousTime = performance.now();
 
   const tick = (time: number): void => {
@@ -344,6 +347,7 @@ export const createStreetScene = ({ canvas, reducedMotion, getTraveller }: Stree
     traveller = getTraveller(0);
     if (traveller.moving && !reducedMotion) {
       offset += SCROLL_SPEED[VEHICLES[traveller.modelId].motion] * delta;
+      travelled += delta;
     }
 
     // Standing still, the scenery only changes when the ground under the traveller does.
@@ -356,7 +360,7 @@ export const createStreetScene = ({ canvas, reducedMotion, getTraveller }: Stree
     }
     terrain.position.x = firstRow - offset;
 
-    updateVehicle(elapsed);
+    updateVehicle(elapsed, travelled);
     renderer.render(scene, camera);
     frame = requestAnimationFrame(tick);
   };
@@ -366,7 +370,7 @@ export const createStreetScene = ({ canvas, reducedMotion, getTraveller }: Stree
     dispose: (): void => {
       cancelAnimationFrame(frame);
       observer.disconnect();
-      vehicles.forEach((mesh) => mesh.geometry.dispose());
+      vehicles.forEach((vehicle) => vehicle.dispose());
       boxGeometry.dispose();
       boxMaterial.dispose();
       material.dispose();
