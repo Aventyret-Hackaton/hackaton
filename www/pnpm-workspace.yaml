@@ -1,0 +1,6 @@
+# pnpm 11+ reads these settings here (the package.json "pnpm" field is no longer
+# read). sharp ships a native build used by Next image optimization. Disable the
+# pre-run deps check so `pnpm run dev` starts the server directly.
+onlyBuiltDependencies:
+  - sharp
+verifyDepsBeforeRun: false

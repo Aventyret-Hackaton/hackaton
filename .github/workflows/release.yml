@@ -1,4 +1,4 @@
-# RIG-OWNED (skrivs av 'rig self update' — ändra i riggen, inte här)
+# RIG-OWNED (written by 'rig self update' — change it in the rig, not here)
 # Thin stub, written by the rig (plugins/github/vendor.sh). The release:
 # Actions → release → Run workflow promotes an RC candidate to stable CalVer
 # (empty rc_tag = latest RC). The same digest is retagged (no rebuild), the stable

@@ -1,4 +1,4 @@
-# RIG-OWNED (skrivs av 'rig self update' — ändra i riggen, inte här)
+# RIG-OWNED (written by 'rig self update' — change it in the rig, not here)
 # Thin stub, written by the rig (plugins/github/vendor.sh). The logic lives in
 # aventyret-rig (reusable workflow) + .rig. The job id `pr` gives the check context
 # "pr / build" that the rig's ruleset for main requires. Do not rename the job.

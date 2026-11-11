@@ -1,4 +1,4 @@
-# RIG-OWNED (skrivs av 'rig self update' — ändra i riggen, inte här)
+# RIG-OWNED (written by 'rig self update' — change it in the rig, not here)
 # Thin stub, written by the rig (plugins/github/vendor.sh). A push to main
 # builds the release (:sha-<sha7>, build once), deploys it to the dev environment and
 # RC-tags the candidate (YYYY.MM.N-rc.M, hence contents: write); a push to
