@@ -1,0 +1,7 @@
+# app — generic app container: up + cli, nothing more. Instantiated ONLY via
+# the label rig.plugin=app in compose (no default instance, so nothing claims
+# a service that happens to be called app). For site-owned services (Statamic, Nuxt,
+# .NET …) that would otherwise copy the same two tasks into rigtasks.sh. What is
+# the site's real knowledge (install, build, migrate) stays there.
+NAME=app
+KIND=service

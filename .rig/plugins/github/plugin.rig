@@ -1,0 +1,14 @@
+# github — the GitHub flow: the workflow stubs in .github/workflows/, the repo's
+# branch rules (rulesets) and the release model (merge to main = release
+# candidate, CalVer tag = promote). Enabling the plugin means letting the rig
+# own .github/. The site writes no workflows of its own. That is what the level
+# `delivery` means, and LEVEL below is what the runner derives the level from.
+# RIG_GITHUB_SKIP opts out of stubs by name (without .yml), e.g. main when
+# the site should not deploy to dev yet; a rig-owned one of those is cleaned up.
+# The build contract (ci) follows the stack; REQUIRES exists because the stubs
+# call ci-* and are meaningless without it. Vendoring lives in vendor.sh.
+NAME=github
+KIND=addon
+REQUIRES=ci
+LEVEL=delivery
+KEYS=RIG_GITHUB_SKIP

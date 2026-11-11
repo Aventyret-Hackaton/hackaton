@@ -1,0 +1,25 @@
+# legacy-attach — sidecar to the rig proxy during the akka-tools transition.
+# Included by the checkout's compose.yaml but sits behind the profile `legacy`:
+# without `--profile legacy` the service does not exist, and `rig proxy-up` does not
+# touch it. `rig proxy-legacy` turns it on; `rig proxy-legacy-off` removes it.
+#
+# Two things, same docker events loop (docker/attach/attach.sh):
+#   1. connects ingress containers that lack the rig network to it (the legacy
+#      compose files put everything on their own network; Traefik looks up the
+#      backend IP on the rig network) and restarts rig-proxy so it sees the new IP
+#   2. issues certs for containers that declare their domains in a Traefik
+#      router rule (as the akka-tools sites do), into share/sites/legacy/ and
+#      a separate dynamic config, so rig-cert and this one never write the same file
+services:
+  legacy-attach:
+    build: ./docker/attach
+    container_name: rig-legacy-attach
+    restart: always
+    init: true
+    profiles: [legacy]
+    labels:
+      traefik.enable: "false"
+    volumes:
+      - ${RIG_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
+      - ../../../.cert:/cert
+      - ../../../ingress/traefik/dynamic:/config

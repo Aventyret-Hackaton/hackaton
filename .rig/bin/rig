@@ -1,0 +1,1044 @@
+#!/usr/bin/env bash
+# rig — Äventyret's task runner. SPIKE.
+#
+# Zero external dependencies: no make, no just, no binary, no runtime.
+# The target is the macOS system bash 3.2 (2007). Hence NO associative arrays,
+# no mapfile, no ${x,,}. Registries are flat arrays with "|" fields.
+# 89 tasks make linear search free.
+#
+# ONE kind of unit (F17): stack, service, rig addon and the site's own tasks
+# are declared identically, as a directory with plugin.rig + tasks.sh.
+#
+#   .rig/plugins/<name>/       the rig's, vendored
+#   <site>/rigplugins/<name>/  the site's own
+#
+# The site: `rigfile` (declarations, PARSED, never sourced; fleet reads the
+# same form with a regex over the GitHub API) + `rigtasks.sh` (own tasks, sourced).
+#
+# Style: never several statements on one line. A one-line function with ONE
+# statement is ok; everything else is broken over lines, so that a task looks
+# the same regardless of how complex it is.
+
+set -euo pipefail
+
+die() {
+  printf '❌ %s\n' "$*" >&2
+  exit 1
+}
+
+log() {
+  printf '⚙️  rig: %s\n' "$*"
+}
+
+##############################################################################
+## REGISTRY
+
+RIG_DOC=()        # "owner|task|description"
+RIG_PLUGIN_META=() # "name|kind|selected via" in load order; rig-status draws the table
+RIG_REQUIRED_BY="" # whose REQUIRES loads the plugin; the provenance in the meta
+RIG_OWNERS=()     # owners in load order
+RIG_OWNER_RANKS=()  # display rank per owner, same index as RIG_OWNERS
+RIG_WHERE=()      # "task|file", for F7 and `rig where`
+RIG_OWNER=""      # set by load_tasks before source
+RIG_OWNER_RANK=0
+RIG_FILE=""
+RIG_DONE=" "      # need() memo
+RIG_LOADED=" "    # plugin dedup
+RIG_PLUGIN_LEVEL="" # delivery when a loaded plugin declares LEVEL=delivery (F8)
+RIG_LEVEL=""      # derived adoption level (contract | stack | delivery); output, never input
+RIG_LEVEL_TEXT="" # what the level means, in ownership terms; help and rig-status print it
+RIG_ORIGIN_KEY="" # which rigfile key named the plugin (the KIND validation)
+# Always loaded in a site, never selectable via RIG_MODULES: site (the site's
+# lifecycle) and rig (the vendoring in .rig/).
+RIG_CORE_PLUGINS="rig site"
+RIG_CORE_KEYS="RIG_SITE RIG_VERSION RIG_STACK RIG_MODULES"
+RIG_KEYS=""       # keys that loaded plugins declare via KEYS=
+RIG_PLUGIN_VERBS=() # "plugin|service|SETUP_BUILD|verb …"; plugins with VERBS= (the image contract)
+# Build tasks that `rig setup` skips (SETUP_BUILD=no in the manifest). `rig
+# build` runs them anyway; this only applies to the first-time setup.
+RIG_SETUP_NO_BUILD=""
+
+# THE AGGREGATE REGISTRIES: "verb|description|flags".
+#
+# The verb is BOTH the registry's name (RIG_<VERB>, which a role appends its
+# task to) and the bare command's name: `rig <verb>` runs every registered
+# <namespace>-<verb>. Fan-out IS the model for the bare verbs: the role
+# registers its verb, the aggregate runs all roles the site actually has. That
+# is why a site with two databases does not need two commands.
+#
+# The gen flag: site materializes `task::<verb>` from the registry (load_fanout),
+# because the body is the same loop every time. A verb without gen has its own
+# recipe in site (setup an ordered prelude, test a bespoke error for an empty
+# registry, doctor sections and verdict), but the registry is the same.
+#
+# A new entry here is a CLI API decision: bare names are a closed list
+# (bare_allowed in tests/run.sh, docs/decisions/2026-09-01-cli-api.md).
+RIG_FANOUT=(
+  "install|Install dependencies in all enabled roles|gen"
+  "build|Build all enabled roles|gen"
+  "format|Format all enabled roles|gen"
+  # The hyphen makes it a multi-part verb, not a bare name: both
+  # `rig deps-update` and `rig deps update` reach task::deps-update, because
+  # the dispatch falls back to <word>-<word> when task::deps does not exist.
+  "deps-update|Bump dependencies within their ranges in all enabled roles|gen"
+  "setup|"
+  "test|"
+  # seed has a registry but NO bare verb: `seed` is a namespace that the
+  # sites own for their own pipelines (`rig seed build`,
+  # `rig seed download-dump`; six sites, 19 tasks 2026-09-06). A bare
+  # `seed` makes their space form unreachable, and the shadow guard dies hard
+  # on it. `rig setup` fans out over the registry; per database it is
+  # `rig db seed` / `rig <instance> seed`.
+  "seed|"
+  # Stack-specific doctor checks. site owns the generic ones (container
+  # state, volumes, cert, ingress, HTTP); a plugin that knows something about
+  # its own role that nobody else can know adds a task here.
+  "doctor|"
+)
+# RIG_INSTALL=() … RIG_DOCTOR=() from the list above: the registries always
+# exist, also for a verb whose plugin is not loaded (`rig seed` in a site
+# without db is an empty loop, not an unknown command).
+for rig_reg in "${RIG_FANOUT[@]}"; do
+  eval "RIG_$(printf '%s' "${rig_reg%%|*}" | tr 'a-z-' 'A-Z_')=()"
+done
+unset rig_reg
+
+# F7: bash SILENTLY overwrites an existing function; make complains about
+# duplicate recipes. Without this check a name collision between two plugins
+# becomes a silent bug. No overrides, ever: exactly one file defines each task.
+#
+# The shadow guard (CLI API 2026-09-01): the dispatch's `rig X Y` runs task X
+# if it exists, so a bare task X next to X-* makes the space form `rig X Y`
+# unreachable. That was the seed bug (`rig seed import` was swallowed by task::seed).
+# deploy is a known exception, frozen until v2: workflows call both `rig deploy`
+# and `rig deploy-plan` by name, and deploy's arg validation catches the wrong form.
+# `seed` is not an exception: the guard is exactly what killed `rig help` in the
+# six sites that own the seed namespace when a bare `seed` was tried (#53).
+# The aggregate verbs' arg validation does not buy back a bare name whose
+# namespace someone else owns; the RIG_SEED registry is enough.
+#
+# In the repair path the guard warns instead of dying: a site pinned
+# BEFORE the renames has the old names (seed, worktree) in its payload, and
+# the update is exactly what removes them; it must not be blocked by
+# them. ${RIG_REPAIR:-0}: the core plugins are loaded before RIG_REPAIR is set.
+shadow_die() {
+  if [ "${RIG_REPAIR:-0}" = 1 ]; then
+    log "⚠️  $1 — the repair path continues (the update changes the names)"
+    return 0
+  fi
+  die "$1 Rename one of them (docs/decisions/2026-09-01-cli-api.md)."
+}
+
+doc() {
+  local e prev head
+  head="${1%%-*}"
+  for e in ${RIG_WHERE[@]+"${RIG_WHERE[@]}"}; do
+    case "$e" in
+      "$1|"*)
+        prev="${e#*|}"
+        die "task '$1' is declared in two files:
+   $prev
+   $RIG_FILE
+No overrides — rename one of them."
+        ;;
+    esac
+    if [ "$head" != "$1" ] && [ "$head" != deploy ]; then
+      case "$e" in
+        "$head|"*)
+          shadow_die "task '$1' is shadowed by task '$head' (${e#*|}) — 'rig $head ${1#*-}' would run '$head'."
+          ;;
+      esac
+    fi
+    case "$1" in
+      deploy | *-*) ;;
+      *)
+        case "$e" in
+          "$1-"*)
+            prev="${e%%|*}"
+            shadow_die "task '$1' shadows task '$prev' — 'rig $1 ${prev#*-}' would run '$1'."
+            ;;
+        esac
+        ;;
+    esac
+  done
+  RIG_WHERE[${#RIG_WHERE[@]}]="$1|$RIG_FILE"
+  RIG_DOC[${#RIG_DOC[@]}]="$RIG_OWNER|$1|$2"
+  case " ${RIG_OWNERS[*]-} " in
+    *" $RIG_OWNER "*) ;;
+    *)
+      RIG_OWNER_RANKS[${#RIG_OWNERS[@]}]="$RIG_OWNER_RANK"
+      RIG_OWNERS[${#RIG_OWNERS[@]}]="$RIG_OWNER"
+      ;;
+  esac
+}
+
+# Replaces make's prerequisites: the dependency stands where it is used, and
+# the memo gives "run once per invocation" (`rig setup up` → one rig-check).
+need() {
+  case "$RIG_DONE" in *" $1 "*) return 0 ;; esac
+  RIG_DONE="$RIG_DONE$1 "
+  run_task "$1"
+}
+
+is_task() {
+  type "task::$1" >/dev/null 2>&1
+}
+
+run_task() {
+  local t="$1"
+  shift
+  is_task "$t" || die "unknown task '$t' — run 'rig help'"
+  "task::$t" "$@"
+}
+
+has_word() {
+  case " $2 " in *" $1 "*) return 0 ;; esac
+  return 1
+}
+
+# Instantiated roles (docs/decisions/2026-09-01-service-namespaces.md):
+# a service with the label rig.plugin=<plugin> in compose gets the role's tasks
+# under its own namespace. The runner only owns the lookup and the validation;
+# the tasks are generated by the plugin's factory (rig_<plugin>_service), and
+# registered via doc so F7 and `rig where` apply as usual. Errors soften to
+# warnings in the repair path: a broken label must never block 'rig self update'.
+instance_die() {
+  if [ "$RIG_REPAIR" = 1 ]; then
+    log "⚠️  compose: $1 — the repair path continues"
+    return 0
+  fi
+  die "compose: $1"
+}
+
+load_instance() {   # load_instance <service> <plugin> [ARG=val …]
+  local svc="$1" plugin="$2" ns
+  shift 2
+  # The namespace is derived from the service name: - and . become _ (the
+  # hyphen is the separator between namespace and verb, CLI API). The service
+  # name in compose is untouched; it is the namespace that is normalized.
+  ns="$(printf '%s' "$svc" | tr '.-' '__')"
+  case "$ns" in
+    "" | *[!a-z0-9_]*)
+      instance_die "the service '$svc' gives no valid namespace ('$ns') — service names with lowercase letters, digits, - . _ can be instantiated"
+      return 0
+      ;;
+  esac
+  if ! has_word "$plugin" "$RIG_LOADED"; then
+    instance_die "rig.plugin=$plugin on the service '$svc' but the plugin is not loaded — add it to RIG_STACK/RIG_MODULES (or remove the label)"
+    return 0
+  fi
+  # Verb plugin (VERBS= in the manifest): the instance is generated by the
+  # runner from the same verb list; the scripts live in the plugin's docker/<SERVICE>/rig/verbs/.
+  local e verbs="" vsvc="" setup_build=""
+  for e in ${RIG_PLUGIN_VERBS[@]+"${RIG_PLUGIN_VERBS[@]}"}; do
+    case "$e" in
+      "$plugin|"*)
+        vsvc="${e#*|}"
+        setup_build="${vsvc#*|}"
+        setup_build="${setup_build%%|*}"
+        vsvc="${vsvc%%|*}"
+        verbs="${e##*|}"
+        ;;
+    esac
+  done
+  if [ -n "$verbs" ]; then
+    if [ $# -gt 0 ]; then
+      instance_die "rig.plugin=$plugin on the service '$svc' — a verb plugin takes no rig.plugin.<arg> labels ($*)"
+      return 0
+    fi
+    # shellcheck disable=SC2086
+    load_verbs "$svc" "$plugin" 2 "service: $svc (plugin: $plugin)" "compose: rig.plugin=$plugin on $svc" "$(plugin_dir "$plugin")/docker/$vsvc/rig/verbs" "$setup_build" $verbs
+    return 0
+  fi
+  if ! type "rig_${plugin}_service" >/dev/null 2>&1; then
+    instance_die "rig.plugin=$plugin on the service '$svc' — the plugin cannot be instantiated (no rig_${plugin}_service)"
+    return 0
+  fi
+  # No namespace lock: the namespace is SHARED. The instance provides up/cli, the
+  # site's rigtasks.sh adds install/build/… next to it (as sites already do with
+  # cms-*). A label on the role's default service is caught by F7 per task
+  # ("is declared in two files", with the label as the second file).
+  RIG_OWNER_RANK=2
+  RIG_OWNER="service: $svc (plugin: $plugin)"
+  RIG_FILE="compose: rig.plugin=$plugin on $svc"
+  "rig_${plugin}_service" "$ns" "SERVICE=$svc" "$@"
+  RIG_OWNER=""
+  RIG_OWNER_RANK=0
+  RIG_FILE=""
+}
+
+# Bash silently overwrites an existing function. F7 (doc) protects task:: names;
+# that no plugin redefines the runner's own functions (die, need, ...)
+# is checked statically by tests/run.sh internals, not here on every
+# call. Convention: rig_* = shared surface (site), <plugin>_* = private.
+load_tasks() {   # load_tasks <rank> <owner> <file>
+  [ -f "$3" ] || return 0
+  RIG_OWNER_RANK="$1"
+  RIG_OWNER="$2"
+  RIG_FILE="$3"
+  . "$3"
+  RIG_OWNER=""
+  RIG_OWNER_RANK=0
+  RIG_FILE=""
+}
+
+##############################################################################
+## PLUGINS (F17)
+
+# Two paths, max. No registry, no URLs, no download.
+plugin_dir() {
+  if [ -d "$RIG_DIR/plugins/$1" ]; then
+    printf '%s\n' "$RIG_DIR/plugins/$1"
+  elif [ -n "$SITE_DIR" ] && [ -d "$SITE_DIR/rigplugins/$1" ]; then
+    printf '%s\n' "$SITE_DIR/rigplugins/$1"
+  else
+    return 1
+  fi
+}
+
+available_plugins() {
+  {
+    ls -1 "$RIG_DIR/plugins" 2>/dev/null
+    if [ -n "$SITE_DIR" ]; then
+      ls -1 "$SITE_DIR/rigplugins" 2>/dev/null
+    fi
+  } | grep -vxF "$(printf '%s\n' $RIG_CORE_PLUGINS)" | sort -u
+}
+
+# Which plugins are stacks? Reads KIND from the manifests, with the same parser.
+rig_stacks() {
+  local f name kind
+  for f in "$RIG_DIR"/plugins/*/plugin.rig; do
+    [ -f "$f" ] || continue
+    kind="$(rig_decl_value "$f" KIND)"
+    if [ "$kind" = stack ]; then
+      name="${f%/plugin.rig}"
+      printf '%s\n' "${name##*/}"
+    fi
+  done
+}
+
+# REQUIRES is flattened and deduped, loaded in declaration order. No topological
+# sort, no cycle detection, no version constraints (Non-goals).
+load_plugin() {
+  local name="$1" dir NAME="" KIND="" REQUIRES="" KEYS="" RENOVATE="" LEVEL="" SELECTABLE="" NOTE="" SERVICE="" VERBS="" SETUP_BUILD="" r owner rank label via
+  local origin="$RIG_ORIGIN_KEY" required_by="$RIG_REQUIRED_BY"
+  # Reset right away: only the plugin NAMED in rigfile is validated against its
+  # key. A plugin pulled in via REQUIRES is by definition the right kind of
+  # thing for whoever requires it (the akka preset requires two stacks).
+  RIG_ORIGIN_KEY=""
+  RIG_REQUIRED_BY=""
+  # The repair path (rig-update/rig-setup) must not be blocked by a plugin
+  # that the rigfile names but the payload does not have yet; that is exactly
+  # what rig-update fetches (a plugin that moved or was added in the rig).
+  # Only for plugins the rigfile names: a REQUIRES in a vendored manifest
+  # must always resolve.
+  if ! dir="$(plugin_dir "$name")"; then
+    if [ "$RIG_REPAIR" = 1 ] && [ -n "$origin" ]; then
+      log "⚠️  unknown plugin '$name' in rigfile — skipping; rig-update vendors it if it exists in the rig"
+      return 0
+    fi
+    die "unknown plugin '$name' — available: $(available_plugins | tr '\n' ' ')"
+  fi
+  [ -f "$dir/plugin.rig" ] || die "$dir has no plugin.rig"
+  # On the repair path the site's .rig/ is still the OLD version's payload, and
+  # its manifests can carry keys this runner has retired (DEPENDABOT before
+  # 2.32.0). Skip them silently: the update is what replaces those manifests.
+  if [ "${RIG_REPAIR:-0}" = 1 ]; then
+    LAX=1 rig_parse "$dir/plugin.rig" "NAME KIND REQUIRES KEYS RENOVATE LEVEL SELECTABLE NOTE SERVICE VERBS SETUP_BUILD"
+  else
+    rig_parse "$dir/plugin.rig" "NAME KIND REQUIRES KEYS RENOVATE LEVEL SELECTABLE NOTE SERVICE VERBS SETUP_BUILD"
+  fi
+  [ "$NAME" = "$name" ] || die "$dir/plugin.rig: NAME=$NAME but the directory is named $name"
+  # The heading in help is always the plugin's name: one plugin, one group, so
+  # every task can be traced to its owner. KIND controls the order: what you
+  # run daily first, self-administration and the runner last. Rank 4 is
+  # reserved for the site's own tasks (rigtasks.sh).
+  #
+  # KIND is also printed in the heading. The order carries the information about
+  # what kind of thing a plugin is, and order is invisible to anyone who does not
+  # already know it, so the group says it itself instead.
+  case "$KIND" in
+    site) rank=0
+          label=site ;;
+    stack) rank=1
+           label=stack ;;
+    service) rank=2
+             label=service ;;
+    addon) rank=3
+           label=addon ;;
+    core) rank=5
+          label=rig ;;
+    machine) rank=6
+             label=machine ;;
+    runner) rank=7
+            label=tool ;;
+    *) die "$dir/plugin.rig: unknown KIND '$KIND' — core | site | runner | stack | service | addon | machine" ;;
+  esac
+  # The site's own plugins are marked: same form, but the site owns them.
+  case "$dir" in
+    "$SITE_DIR"/rigplugins/*) label="site $label" ;;
+  esac
+  # The RIG_STACK/RIG_MODULES split is a taxonomy and is therefore validated
+  # against KIND: without this, RIG_MODULES=akka gives the level 'contract' in a
+  # site with a full stack, and the level is what fleet and `rig help` show.
+  # The manifest owns the taxonomy; the site must not be able to say otherwise.
+  case "$origin" in
+    RIG_STACK)
+      [ "$KIND" = stack ] \
+        || die "$SITE_DIR/rigfile: RIG_STACK=$name but $dir/plugin.rig has KIND=$KIND — move '$name' to RIG_MODULES"
+      ;;
+    RIG_MODULES)
+      case "$KIND" in
+        service | addon) ;;
+        stack) die "$SITE_DIR/rigfile: RIG_MODULES=$name but $dir/plugin.rig has KIND=stack — move '$name' to RIG_STACK (otherwise the wrong adoption level is derived)" ;;
+        *) die "$SITE_DIR/rigfile: '$name' has KIND=$KIND and cannot be selected in RIG_MODULES — only service and addon are selectable ($KIND is always loaded)" ;;
+      esac
+      # SELECTABLE=no: the plugin is only pulled in via REQUIRES (ci follows the stack).
+      # Selecting it in rigfile would be harmless for loading but a lie in the model:
+      # the site would think it selected something it already has. NOTE in the manifest
+      # is the plugin's own guidance on what the developer was probably looking for.
+      if [ "$SELECTABLE" = no ]; then
+        die "$SITE_DIR/rigfile: RIG_MODULES=$name — the plugin cannot be selected, it is pulled in via REQUIRES by those who need it. Remove '$name' from RIG_MODULES.${NOTE:+ $NOTE}"
+      fi
+      ;;
+  esac
+  # Dedup AFTER the validation: proxy, runner, rig and site are loaded before
+  # the rigfile is even read, so an early return would have made the validation
+  # depend on the load order (RIG_MODULES=proxy slipped through).
+  if has_word "$name" "$RIG_LOADED"; then
+    return 0
+  fi
+  RIG_LOADED="$RIG_LOADED$name "
+  # The provenance is recorded at first load: the rigfile key, whose REQUIRES,
+  # or always loaded. It is the answer to "why is this loaded?" and
+  # rig-status draws it; the developer should not have to reconstruct it from four files.
+  case "$origin" in
+    RIG_STACK | RIG_MODULES) via="$origin" ;;
+    *)
+      if [ -n "$required_by" ]; then
+        via="required by $required_by"
+      else
+        via="always"
+      fi
+      ;;
+  esac
+  RIG_PLUGIN_META[${#RIG_PLUGIN_META[@]}]="$name|$label|$via"
+  RIG_KEYS="$RIG_KEYS $KEYS"
+  # LEVEL=delivery: the plugin means that the rig owns the GitHub flow. The level
+  # is derived from the manifests (F8), not from a plugin name hardcoded in the runner.
+  case "$LEVEL" in
+    "") ;;
+    delivery) RIG_PLUGIN_LEVEL=delivery ;;
+    # Signpost for the old Swedish value. Remove in the next minor version.
+    leverans) RIG_PLUGIN_LEVEL=delivery ;;
+    *) die "$dir/plugin.rig: LEVEL=$LEVEL — the only valid value is delivery (stack follows RIG_STACK, contract is the floor)" ;;
+  esac
+  for r in $REQUIRES; do
+    RIG_REQUIRED_BY="$name"
+    load_plugin "$r"
+  done
+  owner="plugin: $NAME ($label)"
+  # tasks.sh, or tasks.d/*.sh when a plugin wants to keep several roles in
+  # separate files. No TASKS key; convention is enough.
+  load_tasks "$rank" "$owner" "$dir/tasks.sh"
+  local f
+  for f in "$dir"/tasks.d/*.sh; do
+    if [ -f "$f" ]; then
+      load_tasks "$rank" "$owner" "$f"
+    fi
+  done
+  # The image contract: VERBS= in the manifest → the role's verbs are generated for
+  # the default claim (SERVICE=, otherwise the plugin's name). The bodies are
+  # scripts in the image; the runner only owns the dispatch (load_verbs).
+  case "$SETUP_BUILD" in
+    "" | yes | no) ;;
+    *) die "$dir/plugin.rig: SETUP_BUILD=$SETUP_BUILD — yes or no" ;;
+  esac
+  if [ -n "$VERBS" ]; then
+    if [ -z "$SERVICE" ]; then
+      SERVICE="$NAME"
+    fi
+    RIG_PLUGIN_VERBS[${#RIG_PLUGIN_VERBS[@]}]="$NAME|$SERVICE|$SETUP_BUILD|$VERBS"
+    # shellcheck disable=SC2086
+    load_verbs "$SERVICE" "$NAME" "$rank" "$owner" "$dir/plugin.rig" "$dir/docker/$SERVICE/rig/verbs" "$SETUP_BUILD" $VERBS
+  fi
+}
+
+# The image contract (docs/decisions/2026-09-02-image-contract.md): a plugin
+# with VERBS= gets the role's verbs generated instead of written in tasks.sh;
+# the bodies are scripts in the image (/rig/verbs/<verb>), and the runner only owns
+# the dispatch. up/cli come along (they are the host side), install runs in a fresh
+# container, the rest in the running one, doctor translates the image's line protocol
+# (rig_verb_run/rig_verb_doctor in the site plugin). `rig where` points to
+# the script for the verbs and to the declaration (plugin.rig or the compose label)
+# for up/cli. The verb family is CLOSED: an unknown verb in VERBS= dies here.
+load_verbs() {   # load_verbs <service> <plugin> <rank> <owner> <declaration> <verb dir> <setup-build> <verb…>
+  local svc="$1" plugin="$2" rank="$3" owner="$4" decl="$5" vdir="$6" setup_build="$7" ns v text
+  shift 7
+  ns="$(printf '%s' "$svc" | tr '.-' '__')"
+  case "$ns" in
+    "" | *[!a-z0-9_]*)
+      die "$decl: the service '$svc' gives no valid namespace ('$ns')"
+      ;;
+  esac
+  RIG_OWNER_RANK="$rank"
+  RIG_OWNER="$owner"
+  RIG_FILE="$decl"
+  eval "task::$ns-up() {
+    docker compose up -d $svc
+  }"
+  doc "$ns-up" "Start the $svc service"
+  eval "task::$ns-cli() {
+    need $ns-up
+    docker compose exec $svc bash
+  }"
+  doc "$ns-cli" "Shell in the $svc container"
+  for v in "$@"; do
+    RIG_FILE="$vdir/$v"
+    case "$v" in
+      install)
+        eval "task::$ns-install() {
+          rig_verb_run run $svc $ns install \"\$@\"
+        }"
+        doc "$ns-install" "Install dependencies in $svc (the image's /rig/verbs/install)"
+        RIG_INSTALL[${#RIG_INSTALL[@]}]="$ns-install"
+        ;;
+      doctor)
+        eval "task::$ns-doctor() {
+          rig_verb_doctor $svc $ns
+        }"
+        doc "$ns-doctor" "Doctor checks for $svc (the image's /rig/verbs/doctor)"
+        RIG_DOCTOR[${#RIG_DOCTOR[@]}]="$ns-doctor"
+        ;;
+      build | format | lint | test | deps-update)
+        eval "task::$ns-$v() {
+          need $ns-up
+          rig_verb_run exec $svc $ns $v \"\$@\"
+        }"
+        case "$v" in
+          build) text="Build $svc" ;;
+          format) text="Format $svc" ;;
+          lint) text="Lint $svc" ;;
+          test) text="Run the tests in $svc" ;;
+          deps-update) text="Bump the dependencies of $svc within their ranges" ;;
+        esac
+        doc "$ns-$v" "$text (the image's /rig/verbs/$v)"
+        case "$v" in
+          build)
+            RIG_BUILD[${#RIG_BUILD[@]}]="$ns-build"
+            if [ "$setup_build" = no ]; then
+              RIG_SETUP_NO_BUILD="$RIG_SETUP_NO_BUILD$ns-build "
+            fi
+            ;;
+          format) RIG_FORMAT[${#RIG_FORMAT[@]}]="$ns-format" ;;
+          test) RIG_TEST[${#RIG_TEST[@]}]="$ns-test" ;;
+          deps-update) RIG_DEPS_UPDATE[${#RIG_DEPS_UPDATE[@]}]="$ns-deps-update" ;;
+        esac
+        ;;
+      *)
+        die "$decl: VERBS=$v — the contract's verbs are install build format lint test doctor deps-update (free verbs are tasks in tasks.sh)"
+        ;;
+    esac
+  done
+  RIG_OWNER=""
+  RIG_OWNER_RANK=0
+  RIG_FILE=""
+}
+
+# The aggregate verbs with the gen flag (RIG_FANOUT): the body is the same loop over
+# the registry every time, so it is generated instead of written four
+# times. Called by SITE, so the owner in help becomes the site plugin and
+# `rig where install` points to its tasks.sh, just as when the body was
+# written there. Outside a site the verbs do not exist, as before.
+#
+# No arguments: an aggregate verb by definition applies to all roles, so
+# `rig seed refresh` must fail and not be read as a silent full seed.
+# The counterpart of the shadow guard, one step further in.
+load_fanout() {
+  local e verb desc flags reg
+  for e in ${RIG_FANOUT[@]+"${RIG_FANOUT[@]}"}; do
+    verb="${e%%|*}"
+    desc="${e#*|}"
+    flags="${desc#*|}"
+    desc="${desc%%|*}"
+    case " $flags " in
+      *' gen '*) ;;
+      *) continue ;;
+    esac
+    reg="RIG_$(printf '%s' "$verb" | tr 'a-z-' 'A-Z_')"
+    eval "task::$verb() {
+      [ \$# = 0 ] || die \"rig $verb takes no arguments (got: \$*) — the aggregate verb runs all roles the site has; for a single role: rig <role> $verb\"
+      local t
+      for t in \${${reg}[@]+\"\${${reg}[@]}\"}; do
+        need \"\$t\"
+      done
+    }"
+    doc "$verb" "$desc"
+  done
+}
+
+##############################################################################
+## BOOTSTRAP
+
+# Follow the symlink chain all the way (~/.local/bin/rig → <checkout>/bin/rig →
+# rig/bin/rig): the runner lives in the payload (rig/bin) so that a pinned version in
+# the cache carries its own runner.
+RIG_SELF="${BASH_SOURCE[0]}"
+while [ -L "$RIG_SELF" ]; do
+  link="$(readlink "$RIG_SELF")"
+  case "$link" in
+    /*) RIG_SELF="$link" ;;
+    *) RIG_SELF="$(dirname "$RIG_SELF")/$link" ;;
+  esac
+done
+RIG_SELF="$(cd "$(dirname "$RIG_SELF")" && pwd -P)"   # …/rig/bin
+RIG_PAYLOAD="$(dirname "$RIG_SELF")"                   # …/rig
+RIG_CHECKOUT="$(dirname "$RIG_PAYLOAD")"               # the checkout or the cache clone
+RIG_BIN="$RIG_SELF/rig"       # absolute; tasks that cd re-exec via this
+# The machine's checkout (the one `rig` on PATH points into): home of .cert, compose
+# for the proxy and doctor.sh. Passed along as env when the site's pinned runner
+# is exec'd below; it lives in the cache and would otherwise take its clone for the machine.
+RIG_MACHINE_CHECKOUT="${RIG_MACHINE_CHECKOUT:-$RIG_CHECKOUT}"
+export RIG_MACHINE_CHECKOUT
+# shellcheck source=../scripts/rig-decl.sh
+. "$RIG_PAYLOAD/scripts/rig-decl.sh"
+# shellcheck source=../scripts/rig-pin.sh
+. "$RIG_PAYLOAD/scripts/rig-pin.sh"
+
+RIG_ORIGIN_PWD="${RIG_ORIGIN_PWD:-$PWD}"
+export RIG_ORIGIN_PWD
+
+if [ "${1-}" = "-C" ]; then                      # replaces $(MAKE) -C
+  [ -n "${2-}" ] || die "-C requires a directory"
+  cd "$2" || die "cannot cd to $2"
+  shift 2
+fi
+
+SITE_DIR=""
+d="$PWD"
+while [ "$d" != "/" ]; do
+  if [ -f "$d/rigfile" ]; then
+    SITE_DIR="$d"
+    break
+  fi
+  d="$(dirname "$d")"
+done
+
+# Which rig does the site run? rigfile RIG_VERSION pins it (rig-pin.sh): .rig/
+# is a committed copy of that version's payload (stamped in .rig/PIN), and
+# the runner that runs is THAT version's (F12: the global `rig` is a launcher that
+# execs the site's own .rig/bin/rig; version skew between runner and plugins is
+# impossible). The copy is synced by `rig self update`; the runner only checks that
+# the stamp matches the pin. A path pin (development) is synced on
+# every call, though, so the checkout's changes are always what runs.
+if [ -n "$SITE_DIR" ]; then
+  cd "$SITE_DIR"
+  RIG_DIR="$SITE_DIR/.rig"
+  pin="$(rig_pin_read "$SITE_DIR/rigfile")"
+  # The repair path recognizes both spellings (self-update / self update)
+  # and the old names (rig-update/rig-setup); the latter only so that their
+  # die signposts in the dispatch are reached even in a site that otherwise fails early.
+  repair=0
+  case "${1-}" in
+    self-update | self-setup | rig-update | rig-setup) repair=1 ;;
+    self)
+      case "${2-}" in
+        update | setup) repair=1 ;;
+      esac
+      ;;
+  esac
+  if [ -z "$pin" ]; then
+    # No pin: either the v1 generation's vendored .rig/ or a repo that has
+    # never been set up (the rigfile written by hand, the guide's step 2). Only
+    # the repair path may run, and it runs from the CHECKOUT's payload: the site's
+    # .rig/ either has the old updater or does not exist at all.
+    #
+    # The requirement for an existing .rig/plugins used to be here and made
+    # the first-time case die in the else branch below, with an error message that
+    # pointed to 'rig self setup', the command that had just failed (issue #49).
+    if [ "$repair" = 1 ]; then
+      RIG_DIR="$RIG_PAYLOAD"
+    elif [ -d "$RIG_DIR/plugins" ]; then
+      die "$SITE_DIR/rigfile has no RIG_VERSION and .rig/ is a vendored copy — run 'rig self update' (switches to a pinned version, MIGRATE_TO_RIG.md)"
+    else
+      die "$SITE_DIR/rigfile has no RIG_VERSION — run 'rig self setup' (pins the rig and adds .rig/) or add RIG_VERSION=<version> to rigfile"
+    fi
+  else
+    rig_pin_kind "$pin" >/dev/null \
+      || die "$SITE_DIR/rigfile: RIG_VERSION=$pin — must be a version (2.0.0, 2.1.0-rc.1) or an absolute path to an aventyret-rig checkout"
+    if [ "$(rig_pin_kind "$pin")" = path ] || [ ! -f "$RIG_DIR/bin/rig" ] || [ -L "$RIG_DIR" ]; then
+      # Path pin: always sync. No copy at all (or the symlink model's
+      # link): fetch and add the copy; that is what rig-setup does, done early.
+      source_dir="$(rig_pin_source "$pin")" || exit 1
+      rig_pin_copy "$SITE_DIR" "$source_dir" "$pin"
+    elif [ "$(rig_pin_stamp "$SITE_DIR")" != "$pin" ] && [ "$repair" = 0 ]; then
+      die "$SITE_DIR/rigfile pins RIG_VERSION=$pin but .rig/ is from '$(rig_pin_stamp "$SITE_DIR")' — run 'rig self update' (syncs the copy) and commit"
+    fi
+    if [ "$repair" = 0 ] && [ "$(cd "$RIG_DIR/bin" && pwd -P)" != "$RIG_SELF" ]; then
+      exec "$RIG_DIR/bin/rig" "$@"
+    fi
+  fi
+else
+  RIG_DIR="$RIG_PAYLOAD"
+fi
+[ -d "$RIG_DIR/plugins" ] || die "cannot find the rig payload (looked in $RIG_DIR)"
+
+# The rig's compose overlay (docs/decisions/2026-10-10-compose-overlay.md).
+# If compose.rig.yaml exists, the site's compose.yaml can run with plain docker
+# compose, and the overlay carries the rig's layer. COMPOSE_FILE gives docker compose
+# exactly the file list rig-compose.sh reads, so the reader and compose see the same
+# stack.
+#
+# The explicit list also means that compose.override.yaml is NOT pulled in:
+# it is the site's ports for running without the rig, and COMPOSE_FILE replaces
+# the whole file list compose would otherwise look up. Two sites can therefore run
+# at the same time in rig mode without a port conflict.
+#
+# On Docker, a site without an overlay is left alone: no COMPOSE_FILE, compose looks up files
+# itself as before. That is what makes the rig side non-breaking for the fleet. A
+# COMPOSE_FILE the user already set is also left untouched.
+#
+# The paths are relative: every site task runs in SITE_DIR, and a worktree of
+# the site (the worktree plugin cds there) thereby gets its own files. Tasks that
+# switch scope to the machine checkout clear the variable instead
+# (rig_in_machine_checkout).
+#
+# On Podman the generated Podman overlay (rig_podman_overlay below) goes last.
+# A site without compose.rig.yaml then gets an explicit list too, so the runner
+# adds the site's override file itself, as compose would have read it.
+#
+# docker or podman. RIG_ENGINE in the environment wins; otherwise the docker
+# CLI tells (podman-docker's `docker --version` says podman). Detected outside a
+# site too: the proxy tasks need it to find the engine's socket (rig_docker_sock).
+case "${RIG_ENGINE-}" in
+  docker | podman) ;;
+  *)
+    case "$(docker --version 2>/dev/null)" in
+      *[Pp]odman*) RIG_ENGINE=podman ;;
+      *) RIG_ENGINE=docker ;;
+    esac
+    ;;
+esac
+export RIG_ENGINE
+
+# The Podman overlay (docs/decisions/2026-10-16-podman-overlay.md). Rootless
+# Podman maps the host user to root in the container, so the rig images'
+# www-data (uid 33) cannot write to the site's bind mounts. keep-id maps the
+# host user to uid 33 instead. Docker does not support it, hence an overlay
+# only on Podman. The same services get pull_policy: build: their image only
+# exists locally, and Podman fails on a site's `always` trying to pull it.
+# podman-compose also requires the default network to be declared at the top
+# level when services list it.
+#
+# The file is generated, since the service names are the site's: every service
+# built from the rig's nextjs or wordpress image. It lives in the machine's
+# cache, keyed by the site directory, and is rewritten on every call. The path
+# is absolute, so a worktree shares its main checkout's file; the service names
+# are the same. Prints the path.
+rig_podman_overlay() {
+  local dir file key svc ctx rest
+  dir="${XDG_CACHE_HOME:-$HOME/.cache}/aventyret-rig/podman"
+  key="$(printf '%s' "$SITE_DIR" | cksum | cut -d' ' -f1)"
+  file="$dir/$key.yaml"
+  mkdir -p "$dir" || return 1
+  {
+    echo "# Generated by the rig on Podman (rig/bin/rig). Do not edit."
+    echo "# Site: $SITE_DIR"
+    echo "networks:"
+    echo "  default: {}"
+    echo "services:"
+    sh "$RIG_DIR/scripts/rig-compose.sh" table | while IFS='|' read -r svc ctx rest; do
+      case "${ctx#./}" in
+        .rig/plugins/nextjs/docker/* | .rig/plugins/wordpress/docker/*)
+          echo "  $svc:"
+          echo "    userns_mode: \"keep-id:uid=33,gid=33\""
+          echo "    pull_policy: build"
+          ;;
+      esac
+    done
+  } > "$file.$$" && mv "$file.$$" "$file" || return 1
+  printf '%s\n' "$file"
+}
+
+if [ -n "$SITE_DIR" ] && [ -z "${COMPOSE_FILE-}" ]; then
+  for f in compose.yaml compose.yml docker-compose.yml docker-compose.yaml; do
+    if [ -f "$SITE_DIR/$f" ]; then
+      if [ -f "$SITE_DIR/compose.rig.yaml" ]; then
+        COMPOSE_FILE="$f:compose.rig.yaml"
+      fi
+      if [ "$RIG_ENGINE" = podman ] && podman_overlay="$(rig_podman_overlay)"; then
+        if [ -z "${COMPOSE_FILE-}" ]; then
+          COMPOSE_FILE="$f"
+          if [ -f "$SITE_DIR/${f%.*}.override.${f##*.}" ]; then
+            COMPOSE_FILE="$COMPOSE_FILE:${f%.*}.override.${f##*.}"
+          fi
+        fi
+        COMPOSE_FILE="$COMPOSE_FILE:$podman_overlay"
+      fi
+      [ -z "${COMPOSE_FILE-}" ] || export COMPOSE_FILE
+      break
+    fi
+  done
+fi
+
+# proxy is ALWAYS loaded so `rig proxy up` works even inside a site (its
+# tasks operate on the checkout explicitly).
+#
+# rig (the self-administration) is also always loaded: `rig self setup` is
+# the first-time command in a repo that does not have a rigfile yet, and without
+# a rigfile there is no SITE_DIR. With the plugin only behind it, the runner answered
+# "unknown task 'self'" in exactly the situation the command is for (issue #49).
+# The tasks cope outside a site: setup requires a compose file and refuses in
+# a rig checkout, update and status say so when nothing is set up.
+# The double load in a site (rig is also in RIG_CORE_PLUGINS, which
+# available_plugins reads) is free; load_plugin dedups.
+#
+# site is only loaded in a site: its tasks operate on the stack, and the checkout
+# is level proxy on the ladder, not a rig site.
+load_plugin runner
+load_plugin proxy
+load_plugin legacy
+load_plugin rig
+if [ -n "$SITE_DIR" ]; then
+  for p in $RIG_CORE_PLUGINS; do
+    load_plugin "$p"
+  done
+fi
+
+# The self-administration is the repair path: it loads the site tolerantly (see
+# load_plugin) so 'rig self update' can always run.
+RIG_REPAIR=0
+case "${1-}" in
+  self-update | self-setup | rig-update | rig-setup) RIG_REPAIR=1 ;;
+  self)
+    case "${2-}" in
+      update | setup) RIG_REPAIR=1 ;;
+    esac
+    ;;
+esac
+
+if [ -n "$SITE_DIR" ]; then
+  RIG_SITE=""
+  RIG_STACK=""
+  RIG_MODULES=""
+  RIG_VERSION=""
+
+  # Pass 1: only the core keys. Which plugins are loaded decides the rest.
+  LAX=1 rig_parse "$SITE_DIR/rigfile" "$RIG_CORE_KEYS"
+
+  # Two loops and not one: the loading is identical, but load_plugin needs to
+  # know which key named the plugin to be able to validate it against
+  # KIND. The order is unchanged: stacks before modules.
+  for s in $RIG_STACK; do
+    RIG_ORIGIN_KEY=RIG_STACK
+    load_plugin "$s"
+  done
+  for s in $RIG_MODULES; do
+    RIG_ORIGIN_KEY=RIG_MODULES
+    load_plugin "$s"
+  done
+  RIG_ORIGIN_KEY=""
+
+  # Pass 2: full validation now that the plugins' KEYS are known. Typos and
+  # expired keys fail here. In the repair path LAX=warn warns instead,
+  # also for keys whose plugin the payload does not have yet.
+  if [ "$RIG_REPAIR" = 1 ]; then
+    LAX=warn rig_parse "$SITE_DIR/rigfile" "$RIG_CORE_KEYS$RIG_KEYS"
+  else
+    rig_parse "$SITE_DIR/rigfile" "$RIG_CORE_KEYS$RIG_KEYS"
+  fi
+
+  load_tasks 4 "site: ${RIG_SITE:-?}" "$SITE_DIR/rigtasks.sh"
+
+  # The level is output: derived from the LOADED plugins (LEVEL= in the manifest) and
+  # from RIG_STACK. Never declared, so it cannot lie. github can be pulled
+  # in via REQUIRES (gcloud requires github), and then the site IS at the delivery level.
+  # The build contract (ci) follows the stack and does not raise the level: level stack
+  # already means that the rig owns the builds.
+  if [ "$RIG_PLUGIN_LEVEL" = delivery ]; then
+    RIG_LEVEL=delivery
+  elif [ -n "$RIG_STACK" ]; then
+    RIG_LEVEL=stack
+  else
+    RIG_LEVEL=contract
+  fi
+  # What the level means, in ownership terms. help and rig-status print it
+  # so nobody needs to know the ladder by heart (docs/ARCHITECTURE.md §1.10).
+  case "$RIG_LEVEL" in
+    delivery) RIG_LEVEL_TEXT="the rig owns contract + builds + the GitHub flow" ;;
+    stack)    RIG_LEVEL_TEXT="the rig owns contract + builds; the GitHub flow is the site's" ;;
+    *)        RIG_LEVEL_TEXT="the rig owns the contract; builds (Dockerfiles) and the GitHub flow are the site's" ;;
+  esac
+fi
+
+##############################################################################
+## DISPATCH
+
+cmd="${1-}"
+if [ $# -gt 0 ]; then
+  shift
+fi
+
+
+# Are there tasks in the namespace? Decides whether `rig <namespace>` without a verb
+# shows the group's help; the namespace is first-class even without a verb.
+has_namespace_tasks() {
+  local e
+  for e in ${RIG_WHERE[@]+"${RIG_WHERE[@]}"}; do
+    case "$e" in
+      "$1-"*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# Instantiated roles: services with a rig.plugin label in compose. Read here,
+# AFTER the whole runner is defined (has_namespace_tasks) and rigtasks.sh is
+# loaded. The instance is registered last, so a collision points to the compose label.
+# This is the only compose read the runner pays for per call: the label
+# defines the CLI itself (which namespaces exist) and is therefore in the same
+# class as the rigfile parsing. The other seam checks stay in
+# doctor/setup/update. Text parsing (rig-compose.sh), never docker.
+if [ -n "$SITE_DIR" ]; then
+  while IFS='|' read -r inst_svc inst_plugin inst_args; do
+    if [ -n "$inst_svc" ]; then
+      # The args are a word list (charset-validated in the factory); split on purpose.
+      # shellcheck disable=SC2086
+      load_instance "$inst_svc" "$inst_plugin" $inst_args
+    fi
+  done <<EOF
+$("$RIG_DIR/scripts/rig-compose.sh" plugins 2>/dev/null || true)
+EOF
+fi
+
+# `rig <task>` outside a site: instead of "unknown task" the runner asks
+# which site applies and re-runs itself there. The error path becomes a path:
+# whoever is not in the right folder does not need to know which folder it is.
+#
+# The hook sits LAST in rig_unknown on purpose: everything that works outside a
+# site (proxy, self, help) has already answered, and the service name suggestions come
+# first. What remains is only what IS a site task, or a typo, and then the
+# list is a Ctrl-C away.
+#
+# The run happens via a re-exec with -C, not by cd-ing here: -C is the same
+# path as always, so the chosen site's pin is read and ITS runner takes over
+# (F12). No loop is possible: in the site SITE_DIR is set and the hook is silent.
+#
+# A child cannot change the shell's cwd. The site is printed for anyone who
+# wonders where the command ended up.
+rig_choose_site() {   # rig_choose_site <task> [args...]
+  local want="$1"
+  shift
+  [ -z "$SITE_DIR" ] || return 1
+  # No tty: CI, agents, scripts, `rig up | grep`. There the error must stay
+  # unchanged; a prompt nobody sees hangs the pipeline.
+  [ -t 0 ] && [ -t 2 ] || return 1
+  local list
+  list="$("$RIG_DIR/scripts/rig-sites.sh" list 2>/dev/null || true)"
+  [ -n "$list" ] || return 1
+
+  local dirs=() names=() states=() dir name state
+  while IFS='|' read -r dir name state; do
+    [ -n "$dir" ] || continue
+    dirs+=("$dir")
+    names+=("$name")
+    states+=("$state")
+  done <<EOF
+$list
+EOF
+  local n=${#dirs[@]}
+  [ "$n" -gt 0 ] || return 1
+
+  # A single site is no question: run there, and say where.
+  if [ "$n" = 1 ]; then
+    log "no rigfile here — running in ${dirs[0]/#$HOME/~}"
+    exec "$RIG_BIN" -C "${dirs[0]}" "$want" "$@"
+  fi
+
+  local i sel
+  printf '⚙️  rig: no rigfile here — which site applies to '\''%s'\''?\n\n' "$want" >&2
+  for ((i = 0; i < n; i++)); do
+    printf '  \033[36m%2d)\033[0m %-24s %-34s %s\n' \
+      "$((i + 1))" "${names[$i]}" "${dirs[$i]/#$HOME/~}" "${states[$i]}" >&2
+  done
+  printf '\n' >&2
+  while :; do
+    printf 'Choose [1-%d, q cancels]: ' "$n" >&2
+    read -r sel || { printf '\n' >&2; die "cancelled"; }
+    case "$sel" in
+      q | Q | "") die "cancelled — run in the site's directory, or 'rig sites' for the list" ;;
+      *[!0-9]*) ;;
+      *)
+        if [ "$sel" -ge 1 ] && [ "$sel" -le "$n" ]; then
+          exec "$RIG_BIN" -C "${dirs[$((sel - 1))]}" "$want" "$@"
+        fi
+        ;;
+    esac
+    printf '  ⚠️  answer with a number between 1 and %d (or q)\n' "$n" >&2
+  done
+}
+
+# The error path: service name → exec suggestion (the passthrough is removed; `rig
+# <role> <verb>` is ALWAYS a task); otherwise unknown task.
+rig_unknown() {
+  local cmd="$1"
+  shift
+  # Service names with hyphens: the namespace is the derived form
+  # (statamic-db → statamic_db). The table in rig self status shows the service
+  # name, so this is exactly what someone types first.
+  local ns
+  ns="$(printf '%s' "$cmd" | tr '.-' '__')"
+  if [ "$ns" != "$cmd" ]; then
+    if [ $# -gt 0 ] && is_task "$ns-$1"; then
+      die "the service '$cmd' is reached as the namespace '$ns' — run: rig $ns $*"
+    fi
+    if [ $# = 0 ] && has_namespace_tasks "$ns"; then
+      die "the service '$cmd' is reached as the namespace '$ns' — run: rig $ns"
+    fi
+  fi
+  if [ $# -gt 0 ] && "$RIG_DIR/scripts/rig-compose.sh" services 2>/dev/null | grep -qx "$cmd"; then
+    die "passthrough is removed — run: rig exec $cmd $*"
+  fi
+  # Last: outside a site an unknown task is usually just the wrong directory.
+  rig_choose_site "$cmd" "$@" || true
+  die "unknown task '$cmd' — run 'rig help'"
+}
+
+case "$cmd" in
+  "" | help | -h | --help)
+    run_task help "$@"
+    ;;
+  where)
+    task::where "$@"
+    ;;
+  *)
+    # `rig <task> --help` / `rig <namespace> <verb> --help` → reflection instead
+    # of running. Only when --help is the ONLY extra argument, so a
+    # task with free arguments (`rig exec www ls --help`) is not hijacked.
+    if [ $# -ge 1 ] && [ "${!#}" = --help ] && [ $# -le 2 ]; then
+      if [ $# = 1 ] && is_task "$cmd"; then
+        task::explain "$cmd"
+        exit 0
+      fi
+      if [ $# = 2 ] && is_task "$cmd-$1"; then
+        task::explain "$cmd-$1"
+        exit 0
+      fi
+    fi
+    if is_task "$cmd"; then
+      run_task "$cmd" "$@"
+    elif [ $# -gt 0 ] && is_task "$cmd-$1"; then
+      # rig www install → task::www-install. The space only replaces the
+      # namespace separator; multi-part verbs keep their hyphen
+      # (rig db seed-refresh), just like git cherry-pick.
+      verb="$1"
+      shift
+      run_task "$cmd-$verb" "$@"
+    elif [ $# = 0 ] && has_namespace_tasks "$cmd"; then
+      run_task help "$cmd"
+    else
+      rig_unknown "$cmd" "$@"
+    fi
+    ;;
+esac

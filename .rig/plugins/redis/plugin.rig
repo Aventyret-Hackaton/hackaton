@@ -1,0 +1,3 @@
+# redis — Redis cache, instantiable per service via the label rig.plugin=redis.
+NAME=redis
+KIND=service

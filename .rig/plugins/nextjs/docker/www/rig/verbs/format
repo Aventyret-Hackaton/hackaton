@@ -1,0 +1,4 @@
+#!/bin/sh
+# /rig/verbs/format — format the frontend (`rig www format`, compose exec).
+set -eu
+exec pnpm run format "$@"

@@ -1,0 +1,26 @@
+# RIG-OWNED (skrivs av 'rig self update' — ändra i riggen, inte här)
+# Thin stub, written by the rig (plugins/github/vendor.sh). The logic lives in
+# aventyret-rig (reusable workflow) + .rig. The job id `pr` gives the check context
+# "pr / build" that the rig's ruleset for main requires. Do not rename the job.
+name: pr
+on:
+  pull_request:
+    # `labeled` is included for the dev-deploy label, so it takes effect at once. A
+    # re-run does not work: it replays the original event payload and
+    # never sees the new label. Any other label is skipped: bots label right
+    # after opening, which gave three runs per bot PR.
+    types: [opened, synchronize, reopened, labeled]
+# A skipped label run gets its own group so it cannot cancel the real build.
+concurrency:
+  group: pr-${{ github.event.number }}${{ github.event.action == 'labeled' && github.event.label.name != 'dev-deploy' && format('-label-{0}', github.run_id) || '' }}
+  cancel-in-progress: true
+jobs:
+  pr:
+    if: github.event.action != 'labeled' || github.event.label.name == 'dev-deploy'
+    uses: Aventyret/aventyret-rig/.github/workflows/site-pr.yml@v2.38.0
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: write

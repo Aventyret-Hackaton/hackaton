@@ -1,0 +1,37 @@
+#!/bin/sh
+# /rig/verbs/install — composer and theme build dependencies. The image contract:
+# run by `rig cms install` in a fresh container (compose run --rm), and by
+# the Dockerfile's build stage in CI, the same script (stage 3, CI parity).
+# The theme is always built with pnpm (the yarn support was removed, see the Dockerfile's header).
+#
+# RIG_VERB_OFFLINE=1 is set by the build stage: vendor and the store are filled by
+# the deps stage from the lockfiles alone, so nothing may be fetched and the lockfile
+# is frozen. The flags live here and not in the Dockerfile, so that local and CI
+# run the same script.
+set -eu
+. /rig/lib/wp-theme.sh
+
+composer_install() {   # composer_install [composer flags]
+  if [ -n "${RIG_VERB_OFFLINE:-}" ]; then
+    composer install --no-interaction --no-progress "$@"
+  else
+    composer install "$@"
+  fi
+}
+
+if [ -f composer.json ]; then
+  composer_install
+else
+  echo "⚠️  No composer.json, skipping composer install"
+fi
+theme="$(wp_theme_dir)"
+if [ -f "$theme/composer.json" ]; then
+  composer_install -d "$theme"
+else
+  echo "⚠️  No composer.json in the theme, skipping"
+fi
+cd "$theme"
+if [ -z "${RIG_VERB_OFFLINE:-}" ]; then
+  exec pnpm install "$@"
+fi
+exec pnpm install --frozen-lockfile --offline "$@"

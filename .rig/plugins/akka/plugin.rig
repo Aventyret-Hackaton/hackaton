@@ -1,0 +1,7 @@
+# akka — Äventyret's headless convention, as a preset: nextjs (role www) +
+# wordpress (role cms). Owns no tasks of its own. The roles live in the plugin
+# that implements them, so a site can take just one of them (RIG_STACK=nextjs, or
+# RIG_STACK=wordpress for a classic WordPress site).
+NAME=akka
+KIND=stack
+REQUIRES=nextjs wordpress

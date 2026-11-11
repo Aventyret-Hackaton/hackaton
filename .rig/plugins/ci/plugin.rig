@@ -1,0 +1,10 @@
+# ci — the build contract that CI calls: ci-build/ci-push/ci-digest build
+# release images from the rig's Dockerfiles, cloud-neutral and runnable locally
+# (docs/decisions/2026-08-01-ci-cd-plan.md 1.4). Follows the stack. Every stack plugin has
+# REQUIRES=ci, and it cannot be selected in rigfile. The GitHub flow (workflows,
+# branch rules, releases) is plugin github; dev hosting is gcloud.
+NAME=ci
+KIND=addon
+SELECTABLE=no
+NOTE=The build contract (ci-*) follows the stack. If the rig should own the GitHub flow (workflows, branch rules), the module is called github.
+KEYS=RIG_DEPLOY_SERVICES RIG_ENVIRONMENTS RIG_ARTIFACT RIG_BASE_REGISTRY

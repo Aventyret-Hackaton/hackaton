@@ -1,0 +1,4 @@
+# db — MariaDB/MySQL with seed handling, instantiable per service via the label rig.plugin=db.
+NAME=db
+KIND=service
+KEYS=DB_BIN DB_DUMP_BIN DB_WAIT_TIMEOUT DB_VOLUME DB_COPY_IMAGE

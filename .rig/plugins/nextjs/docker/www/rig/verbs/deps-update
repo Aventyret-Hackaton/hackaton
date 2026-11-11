@@ -1,0 +1,14 @@
+#!/bin/sh
+# /rig/verbs/deps-update — raise the dependencies within their ranges and rewrite
+# the lockfile. The image contract: `rig www deps-update` runs it in the running
+# container, `rig deps update` runs it in every role the site has.
+#
+# Why the verb exists: dependabot cannot do this on an akka site. Its npm jobs
+# fail on pnpm 11's lockfile verification in the sandbox, and even when they
+# run they only touch direct dependencies (update-subdependencies: false). Most
+# of the alerts are transitive. See issue #88.
+#
+# --latest is NOT included: majors are taken deliberately, one at a time, against
+# the changelog. The verb keeps the site within its declared ranges, nothing more.
+set -eu
+exec pnpm update "$@"

@@ -1,0 +1,3 @@
+# worktree — parallel runtime environments from git worktrees.
+NAME=worktree
+KIND=addon

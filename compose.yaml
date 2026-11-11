@@ -1,0 +1,23 @@
+networks:
+  rig:
+    external: true
+
+volumes:
+  rig-cert:
+    external: true
+  rig-pnpm-store:
+    external: true
+
+services:
+  www:
+    build:
+      context: .rig/plugins/nextjs/docker/www
+    hostname: www.${RIG_HOST_BASE}.test
+    env_file: [.env, www/.env]
+    volumes:
+      - ./www:/service/www
+      - rig-cert:/rig/cert:ro
+      - rig-pnpm-store:/service/.pnpm-store
+    networks: [default, rig]
+    labels:
+      - rig.hosts=www.${RIG_HOST_BASE}.test,${RIG_HOST_BASE}.test

@@ -1,0 +1,12 @@
+#!/bin/sh
+# /rig/verbs/lint — lint the frontend (`rig www lint`, compose exec). Also run
+# by the Dockerfile's build stage in CI, the same script (stage 3, CI parity).
+#
+# The guard: a site without a lint script must not fail the build. pnpm --if-present
+# does not help, it gives exit code 1 anyway.
+set -eu
+if ! node -e 'process.exit(require("./package.json").scripts && require("./package.json").scripts.lint ? 0 : 1)' 2>/dev/null; then
+  echo "⚠️  No lint script in package.json, skipping"
+  exit 0
+fi
+exec pnpm run lint "$@"

@@ -1,0 +1,35 @@
+# Thin stub, written by the rig (plugins/github/vendor.sh). The release:
+# Actions → release → Run workflow promotes an RC candidate to stable CalVer
+# (empty rc_tag = latest RC). The same digest is retagged (no rebuild), the stable
+# tag + GitHub Release are created as a receipt (RIG_ARTIFACT=files: with the dist tar
+# attached as Release assets), and the deploy is chained to the targets
+# (empty targets = RIG_RELEASE_TARGETS) if the module deploy is on. A manually
+# pushed CalVer tag is the escape hatch and only retags the digest.
+# docs/BRANCH_STRATEGY.md §8 in aventyret-rig.
+name: release
+on:
+  workflow_dispatch:
+    inputs:
+      rc_tag:
+        description: "RC to promote (e.g. 2026.08.3-rc.2). Empty = latest."
+        required: false
+        type: string
+      targets:
+        description: "Targets, comma-separated. Empty = RIG_RELEASE_TARGETS."
+        required: false
+        type: string
+  push:
+    tags:
+      - "[0-9][0-9][0-9][0-9].[0-9]*.[0-9]*"
+jobs:
+  release:
+    uses: Aventyret/aventyret-rig/.github/workflows/site-release.yml@v2
+    with:
+      rc_tag: ${{ inputs.rc_tag }}
+      targets: ${{ inputs.targets }}
+    secrets: inherit
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+      deployments: write

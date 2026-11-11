@@ -1,0 +1,3 @@
+# proxy — machine infrastructure (level 0 in the ownership ladder). Always loaded.
+NAME=proxy
+KIND=machine

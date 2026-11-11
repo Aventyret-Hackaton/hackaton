@@ -1,0 +1,20 @@
+#!/bin/sh
+# /rig/verbs/deps-update — raise the dependencies within their ranges and rewrite
+# the lockfiles. The image contract: `rig cms deps-update` runs it in the running
+# container, `rig deps update` runs it in every role the site has.
+#
+# Why the verb exists: dependabot cannot do this on an akka site. Its npm jobs
+# fail on pnpm 11's lockfile verification in the sandbox, and even when they
+# run they only touch direct dependencies (update-subdependencies: false). Most
+# of the alerts are transitive. See issue #88.
+#
+# Composer is left untouched: dependabot DOES handle composer on the sites, and
+# `composer update` without arguments moves core and plugins in one sweep. That
+# is a release, not a dependency bump.
+#
+# --latest is NOT included: majors are taken deliberately, one at a time, against the changelog.
+set -eu
+. /rig/lib/wp-theme.sh
+theme="$(wp_theme_dir)"
+cd "$theme"
+exec pnpm update "$@"

@@ -1,0 +1,30 @@
+# Thin stub, written by the rig (plugins/github/vendor.sh). Actions → deploy
+# → Run workflow: deploy a built release (tag) to one or more targets from
+# deploy/targets/. Empty targets = RIG_RELEASE_TARGETS (the default targets for a
+# release). Rollback = the same button with an older tag. Protected targets (required
+# reviewers on the GitHub Environment) pause for approval. Vendored only when
+# the module `deploy` is resolved.
+name: deploy
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to deploy (sha-<sha7> or CalVer, e.g. 2026.08.1)"
+        required: true
+        type: string
+      targets:
+        description: "Targets, space- or comma-separated. Empty = RIG_RELEASE_TARGETS."
+        required: false
+        type: string
+        default: ""
+jobs:
+  deploy:
+    uses: Aventyret/aventyret-rig/.github/workflows/site-deploy.yml@v2
+    with:
+      tag: ${{ inputs.tag }}
+      targets: ${{ inputs.targets }}
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write
+      deployments: write

@@ -1,0 +1,4 @@
+# site — the site's lifecycle: dev/up/down, env, setup and the aggregates. Always
+# loaded in a site, never via RIG_MODULES.
+NAME=site
+KIND=site

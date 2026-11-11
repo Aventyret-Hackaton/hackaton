@@ -1,0 +1,18 @@
+#!/bin/sh
+# /rig/verbs/lint — the theme's `lint` script, run FROM the theme directory (the theme
+# scripts scan relative to cwd). `rig cms lint` runs it in the running container (exec);
+# the Dockerfile's build stage runs the same script in CI (stage 3, CI parity).
+# The theme directory comes from /rig/lib/wp-theme.sh: exactly one theme, or WP_THEME.
+#
+# The guard: the themes have historically had no lint script (sulf did not), and
+# a missing script must not fail the build. pnpm --if-present does not help, it
+# gives exit code 1 anyway.
+set -eu
+. /rig/lib/wp-theme.sh
+theme="$(wp_theme_dir)"
+cd "$theme"
+if ! node -e 'process.exit(require("./package.json").scripts && require("./package.json").scripts.lint ? 0 : 1)' 2>/dev/null; then
+  echo "⚠️  No lint script in $theme/package.json, skipping"
+  exit 0
+fi
+exec pnpm run lint "$@"

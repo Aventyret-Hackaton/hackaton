@@ -1,0 +1,4 @@
+# rig — the rig's self-administration: the vendoring in .rig/. Always loaded in
+# a site (like plugin site). The repo's branch strategy lives in plugin github.
+NAME=rig
+KIND=core

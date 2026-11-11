@@ -1,0 +1,61 @@
+#!/bin/sh
+# /rig/verbs/doctor — the container plane of the WordPress doctor. Line protocol to
+# the host: ok|warn|fail<TAB>text<TAB>action. WordPress errors that look like
+# something else: composer not run (web/wp missing → nginx 404), database seeded
+# in another environment (home points to a foreign domain → everything redirects away),
+# loopback that cannot reach its own https address (admin, cron, block rendering die
+# silently). wp-cli writes PHP deprecations to stderr; silenced on purpose.
+set -u
+ns="${RIG_VERB_NS:-cms}"
+svc="${RIG_VERB_SERVICE:-cms}"
+t="$(printf '\t')"
+ok()   { printf 'ok%s%s\n' "$t" "$1"; }
+warn() { printf 'warn%s%s%s%s\n' "$t" "$1" "$t" "$2"; }
+fail() { printf 'fail%s%s%s%s\n' "$t" "$1" "$t" "$2"; }
+wpq()  { wp --allow-root "$@" 2>/dev/null; }
+
+if [ -f vendor/autoload.php ] && [ -d web/wp ]; then
+  ok "$svc: composer dependencies and web/wp exist"
+else
+  fail "$svc: vendor/autoload.php or web/wp is missing — composer has not run in the container" "rig $ns install"
+fi
+
+# Same theme rule as install/build (exactly one theme with package.json, or
+# WP_THEME). If it fails, the verbs fail on the same thing.
+. /rig/lib/wp-theme.sh
+if theme="$(wp_theme_dir 2>/dev/null)"; then
+  if [ -d "$theme/node_modules" ]; then
+    ok "$svc: the theme's node_modules exist"
+  else
+    warn "$svc: the theme has no node_modules (the theme build fails otherwise)" "rig $ns install"
+  fi
+else
+  warn "$svc: $(wp_theme_dir 2>&1 >/dev/null || true)" "set WP_THEME in the service env, or make sure exactly one theme under web/app/themes/ has package.json"
+fi
+
+if wpq core is-installed; then
+  ok "$svc: WordPress is installed and reaches the database"
+else
+  fail "$svc: WordPress does not reach the database, or is not installed" "rig db doctor first — then 'rig db seed'"
+  exit 0
+fi
+
+# home/siteurl come from the database, i.e. from the seed. A volume cloned from
+# another environment carries that environment's domain.
+home="$(wpq option get home | tr -d '\r')"
+want="${WP_HOME:-}"
+if [ -z "$want" ]; then
+  warn "$svc: WP_HOME is not set in the container env" "rig env"
+elif [ "$home" = "$want" ]; then
+  ok "$svc: home/siteurl match WP_HOME ($home)"
+else
+  fail "$svc: home in the database is $home but WP_HOME is $want" "rig $ns update-siteurl (the database is seeded from another environment)"
+fi
+
+# WP's own loopback call, with WP's HTTP stack and CA configuration, not
+# curl, which has a different cert store.
+code="$(wpq eval '$r = wp_remote_get( home_url( "/" ), array( "timeout" => 8 ) ); echo is_wp_error( $r ) ? "WP_ERROR: " . $r->get_error_message() : wp_remote_retrieve_response_code( $r );')"
+case "$code" in
+  2??|3??) ok "$svc: loopback to its own https address responds $code" ;;
+  *) fail "$svc: loopback to its own https address fails ($code)" "check the cert in the section above — without 443 in the container, admin calls, cron and block rendering die" ;;
+esac

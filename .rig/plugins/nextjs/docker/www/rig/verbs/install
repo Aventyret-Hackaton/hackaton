@@ -1,0 +1,13 @@
+#!/bin/sh
+# /rig/verbs/install — frontend dependencies. The image contract
+# (docs/decisions/2026-09-02-image-contract.md): run by `rig www install`
+# in a fresh container (compose run --rm), in the service's working directory, and
+# by the Dockerfile's build stage in CI, the same script (stage 3, CI parity).
+#
+# RIG_VERB_OFFLINE=1 is set by the build stage: the store is filled by the deps stage
+# from the lockfile alone, so install must not fetch anything (pnpm --offline).
+set -eu
+if [ -n "${RIG_VERB_OFFLINE:-}" ]; then
+  exec pnpm install --frozen-lockfile --offline "$@"
+fi
+exec pnpm install --frozen-lockfile "$@"

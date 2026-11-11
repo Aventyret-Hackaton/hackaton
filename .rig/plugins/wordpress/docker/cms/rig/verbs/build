@@ -1,0 +1,10 @@
+#!/bin/sh
+# /rig/verbs/build — the theme's `build` script, run FROM the theme directory (the theme
+# scripts scan relative to cwd). `rig cms build` runs it in the running container (exec);
+# CI's build stage runs the same script (stage 3, CI parity).
+# The theme directory comes from /rig/lib/wp-theme.sh: exactly one theme, or WP_THEME.
+set -eu
+. /rig/lib/wp-theme.sh
+theme="$(wp_theme_dir)"
+cd "$theme"
+exec pnpm run build "$@"

@@ -1,0 +1,4 @@
+# runner — the runner's own interface: help, where, tasks, completion, explain.
+# Always loaded (also outside a site), as proxy.
+NAME=runner
+KIND=runner

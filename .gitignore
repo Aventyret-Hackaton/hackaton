@@ -1,0 +1,15 @@
+# rig-generated env (the .env.template and .env.rig ARE committed; outputs are not)
+.env
+.env.local
+.user/
+
+# www (Next.js)
+www/node_modules/
+www/.next/
+www/.env
+www/.env.local
+www/.npmrc
+www/next-env.d.ts
+
+# misc
+.DS_Store

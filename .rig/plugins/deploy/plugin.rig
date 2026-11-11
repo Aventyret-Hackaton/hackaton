@@ -1,0 +1,9 @@
+# deploy — targets and the deploy to them: `rig deploy <target> <service> <image>`
+# places a built release on a declared installation of the site. The targets live
+# in deploy/targets/<target>.rig and name their provider; the placement itself is owned
+# by provider plugins (ssh, gcloud, ...) that register in RIG_PROVIDERS.
+# The contract providers implement is in tasks.sh. Builds nothing: the image must
+# already exist (build once, promote — docs/BRANCH_STRATEGY.md §6).
+NAME=deploy
+KIND=addon
+KEYS=RIG_RELEASE_TARGETS

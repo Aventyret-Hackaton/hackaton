@@ -1,0 +1,7 @@
+# rigfile — strict KEY=value (parsed, never sourced; fleet reads the same form).
+# RIG_VERSION is written by `rig self setup`.
+RIG_SITE=hackaton
+RIG_STACK=nextjs
+RIG_MODULES=github
+RIG_DEPLOY_SERVICES=www
+RIG_VERSION=2.38.0

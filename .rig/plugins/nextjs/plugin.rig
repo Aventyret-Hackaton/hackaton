@@ -1,0 +1,16 @@
+# nextjs — Next.js frontend in the role www. Requires no backing services: a
+# frontend that only talks to an external API/CMS needs neither db nor redis.
+NAME=nextjs
+# The image contract: the role's verbs live in the image (docker/www/rig/verbs/), the
+# runner generates the dispatch. SERVICE is the default claim; more services via
+# rig.plugin=nextjs in compose.
+SERVICE=www
+VERBS=install build format lint doctor deps-update
+# `rig setup` does not build www: next dev compiles on demand, and a production
+# build in setup only costs time (and fails setup when the code does not build).
+# `rig build` / `rig www build` build as before.
+SETUP_BUILD=no
+KIND=stack
+# The build contract (ci-build etc.) follows the stack: the rig owns the Dockerfile,
+# and therefore also the production image built from it.
+REQUIRES=ci

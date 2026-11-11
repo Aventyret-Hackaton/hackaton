@@ -1,0 +1,61 @@
+# The Cloud Run service for cms in the develop environment (the shared GCP dev project).
+# Scaffolded by rig-setup/update to the site's deploy/cms.develop.yaml. The file
+# is the site's own: adjust scaling/resources here and commit.
+#
+# This is an INFRA SKELETON. Env variables do not belong here:
+#   env + secrets   come from cms/.env.template via `rig gcloud-env`
+#                   (op:// → Secret Manager, rig://db/host etc. →
+#                   the dev instances' values, rig-secret://db/password →
+#                   secret binding to site-init's secret)
+#   image           set by CI (gcloud run deploy --image) on every push
+#   this file       applied by `rig gcloud-apply`, which re-syncs env
+#                   afterwards, since `services replace` resets it
+#
+# __IMAGE__ is replaced by gcloud-apply with the service's current image. Do not
+# change it.
+#
+# WP_HOME/WP_SITEURL are not set as env. gcloud-env injects RIG_SERVICE_URL
+# (the service's canonical URL). The site's config/application.php derives the URLs
+# from the request's Host header (correct for PR tag URLs and custom domains too)
+# with RIG_SERVICE_URL as the fallback for wp-cli/cron. Instead of
+# Config::define('WP_HOME', env('WP_HOME')) etc.:
+#   if (env('RIG_SERVICE_URL')) {
+#       $host = $_SERVER['HTTP_HOST'] ?? parse_url(env('RIG_SERVICE_URL'), PHP_URL_HOST);
+#       Config::define('WP_HOME', 'https://' . $host);
+#       Config::define('WP_SITEURL', 'https://' . $host . '/wp');
+#   } else {
+#       Config::define('WP_HOME', env('WP_HOME'));
+#       Config::define('WP_SITEURL', env('WP_SITEURL'));
+#   }
+# NOTE: must go into application.php (before the existing defines). Bedrock's
+# environments/ files are loaded afterwards and Config::define cannot redefine.
+#
+# MySQL (shared Cloud SQL) and Redis (shared Memorystore) are reached via private IP,
+# hence the Direct VPC egress annotations below.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: __SITE__-cms
+  labels:
+    rig-site: __SITE__
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "2"
+        run.googleapis.com/network-interfaces: '[{"network":"default","subnetwork":"default"}]'
+        run.googleapis.com/vpc-access-egress: private-ranges-only
+    spec:
+      containerConcurrency: 20
+      timeoutSeconds: 120
+      containers:
+        - image: __IMAGE__
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi

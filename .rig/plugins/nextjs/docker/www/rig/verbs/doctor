@@ -1,0 +1,42 @@
+#!/bin/sh
+# /rig/verbs/doctor — the container plane of the frontend doctor. The host
+# (rig_verb_doctor) runs the script with compose exec and translates the line protocol:
+#
+#   ok<TAB>text
+#   warn<TAB>text<TAB>action
+#   fail<TAB>text<TAB>action
+#
+# What only the image can know: that an empty node_modules volume is a blocker,
+# not a cold cache, and that the dev server is alive. The host plane (volumes,
+# certs, ingress) is the rig's generic doctor. RIG_VERB_NS/RIG_VERB_SERVICE are set
+# by the host so the actions print the right command.
+set -u
+ns="${RIG_VERB_NS:-www}"
+svc="${RIG_VERB_SERVICE:-www}"
+t="$(printf '\t')"
+ok()   { printf 'ok%s%s\n' "$t" "$1"; }
+warn() { printf 'warn%s%s%s%s\n' "$t" "$1" "$t" "$2"; }
+fail() { printf 'fail%s%s%s%s\n' "$t" "$1" "$t" "$2"; }
+
+# The named volume mount shadows the host's node_modules: an empty volume gives
+# "Cannot find module 'next'" regardless of what is on disk.
+if [ -d node_modules/.pnpm ]; then
+  ok "$svc: node_modules is installed in the container"
+else
+  fail "$svc: node_modules is missing .pnpm — the volume is empty or half-installed" "rig $ns install"
+fi
+
+# The lockfile is newer than the install: the container runs with yesterday's packages.
+if [ -f node_modules/.modules.yaml ] && [ pnpm-lock.yaml -nt node_modules/.modules.yaml ]; then
+  warn "$svc: pnpm-lock.yaml is newer than node_modules" "rig $ns install"
+fi
+
+# Probe the container's OWN hostname, not 127.0.0.1: Next rejects unknown
+# Host headers with 500. HTTP on 8080, not https: 443 is the cert section's concern.
+code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://$(hostname):8080/" 2>/dev/null || true)"
+code="${code:-000}"
+case "$code" in
+  2??|3??|401) ok "$svc: the dev server responds in the container ($code)" ;;
+  000) fail "$svc: the dev server does not respond in the container (no connection)" "rig logs $svc — pnpm dev may have died without the container dying" ;;
+  *) fail "$svc: the dev server responds $code in the container — the error is in the app, not in the proxy" "rig logs $svc; if it is in the .next cache: rig down, remove the volume mounted on .next (docker volume ls) and rig up" ;;
+esac

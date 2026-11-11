@@ -1,0 +1,15 @@
+# wordpress — WordPress (Bedrock) in the role cms, headless or classic. A
+# headless site also has the role www (nextjs); the preset akka is the two
+# together. REQUIRES sits here and not on the preset: it is cms that
+# needs MariaDB and Redis.
+#
+# The image contract: the role's verbs live in the image (docker/cms/rig/verbs/), the
+# runner generates the dispatch. The theme is always built with pnpm; yarn is not supported.
+NAME=wordpress
+KIND=stack
+REQUIRES=db redis ci
+SERVICE=cms
+VERBS=install build format lint doctor deps-update
+# Renovate preset on top of the shared default (rig.sh do_renovate):
+# Bedrock rules such as the language packs that follow core.
+RENOVATE=wordpress

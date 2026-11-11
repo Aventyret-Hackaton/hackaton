@@ -1,0 +1,13 @@
+# RIG-OWNED (skrivs av 'rig self update' — ändra i riggen, inte här)
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch

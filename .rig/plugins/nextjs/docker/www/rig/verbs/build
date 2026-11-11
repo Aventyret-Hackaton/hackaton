@@ -1,0 +1,5 @@
+#!/bin/sh
+# /rig/verbs/build — build the frontend. Run by `rig www build` in the running
+# container (compose exec), with the same volumes and caches as the dev server.
+set -eu
+exec pnpm run build "$@"

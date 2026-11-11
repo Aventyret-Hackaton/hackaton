@@ -1,0 +1,7 @@
+# legacy — coexistence with akka-tools during the transition: unmigrated sites
+# run behind the rig proxy without changes to their repos. Machine scope, always
+# loaded (like proxy). Everything that knows anything about akka-tools lives here
+# and nowhere else; the plugin is removed when the last site has migrated (README.md).
+NAME=legacy
+KIND=machine
+NOTE=Removed when no site references AKKA_TOOLS in its compose any longer.

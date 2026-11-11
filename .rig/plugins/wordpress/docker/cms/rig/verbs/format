@@ -1,0 +1,9 @@
+#!/bin/sh
+# /rig/verbs/format — the theme's `format` script, run FROM the theme directory (the theme
+# scripts scan relative to cwd). `rig cms format` runs it in the running container (exec).
+# The theme directory comes from /rig/lib/wp-theme.sh: exactly one theme, or WP_THEME.
+set -eu
+. /rig/lib/wp-theme.sh
+theme="$(wp_theme_dir)"
+cd "$theme"
+exec pnpm run format "$@"

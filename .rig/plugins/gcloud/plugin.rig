@@ -1,0 +1,7 @@
+# gcloud — dev hosting in GCP (Cloud Run in the dev project).
+# Requires the GitHub flow: deploys run from the workflows. The build contract
+# (ci) comes along transitively and owns RIG_DEPLOY_SERVICES,
+# which gcloud reads. Vendoring of deploy/<service>.dev.yaml lives in vendor.sh.
+NAME=gcloud
+KIND=addon
+REQUIRES=github

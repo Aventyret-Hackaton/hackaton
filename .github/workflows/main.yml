@@ -1,0 +1,23 @@
+# RIG-OWNED (skrivs av 'rig self update' — ändra i riggen, inte här)
+# Thin stub, written by the rig (plugins/github/vendor.sh). A push to main
+# builds the release (:sha-<sha7>, build once), deploys it to the dev environment and
+# RC-tags the candidate (YYYY.MM.N-rc.M, hence contents: write); a push to
+# hotfix/* only builds. Production = Actions → release (promotes an RC to
+# stable CalVer). docs/BRANCH_STRATEGY.md in aventyret-rig.
+name: main
+on:
+  push:
+    branches: [main, "hotfix/**"]
+concurrency:
+  group: main-${{ github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  main:
+    uses: Aventyret/aventyret-rig/.github/workflows/site-main.yml@v2.38.0
+    secrets: inherit
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+      pull-requests: read
+      deployments: write
