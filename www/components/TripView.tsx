@@ -70,7 +70,8 @@ const getTraveller = (timeline: Timeline): Traveller => {
   return { modelId: LEGS[legIndex].modelId, unit: trackPoint(JOURNEY_TRACKS[legIndex], legProgress, new Vector3()), urban: false, moving: true };
 };
 
-const formatSpeed = (speed: number): string => (speed === 1 ? 'realtid' : `${speed}x`);
+// Thousands are separated by spaces, as in Swedish.
+const formatSpeed = (speed: number): string => (speed === 1 ? 'realtid' : `${speed.toLocaleString('sv-SE')}x`);
 
 const usePhase = (timeline: Timeline | null): TripPhase | null => {
   const [phase, setPhase] = useState<TripPhase | null>(null);
