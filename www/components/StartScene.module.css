@@ -1,16 +1,57 @@
 .stage {
+  position: relative;
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  background: #5cb8e9;
+  overflow: hidden;
+  background: linear-gradient(#3f8fe2, #b9e3f8 46%, #86cc4a 46%);
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.stage[data-flat] .backdrop {
+  display: none;
 }
 
 .board {
   position: relative;
   width: min(100vw, calc(100dvh * 1672 / 941));
   aspect-ratio: 1672 / 941;
-  background: url('/start-bg.png') center / cover no-repeat;
   container-type: inline-size;
+}
+
+/* The scene draws the name itself. As text it is only seen when the scene cannot be drawn. */
+.name {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.stage[data-flat] .name {
+  top: 4%;
+  left: 0;
+  width: 100%;
+  height: auto;
+  clip-path: none;
+  color: #fff0c2;
+  font-family: 'Lilita One', Helvetica, Arial, sans-serif;
+  font-size: 5.4cqw;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-align: center;
+  text-shadow: 0.3cqw 0.3cqw 0 #f46b59;
+  text-transform: uppercase;
 }
 
 /* ---- arcade panel (covers the baked-in panel art) ---- */
