@@ -11,6 +11,7 @@ type PlaceAutocompleteProps = {
 };
 
 const DEBOUNCE_MS = 250;
+const MIN_QUERY_LENGTH = 2;
 
 export const PlaceAutocomplete = ({ label, initialPlace, onChange }: PlaceAutocompleteProps): React.JSX.Element => {
   const id = useId();
@@ -24,8 +25,7 @@ export const PlaceAutocomplete = ({ label, initialPlace, onChange }: PlaceAutoco
 
   useEffect(() => {
     const input = query.trim();
-    if (!isSearching || input.length < 2) {
-      setSuggestions([]);
+    if (!isSearching || input.length < MIN_QUERY_LENGTH) {
       return;
     }
 
@@ -60,6 +60,9 @@ export const PlaceAutocomplete = ({ label, initialPlace, onChange }: PlaceAutoco
   const handleInput = (value: string): void => {
     setQuery(value);
     setIsSearching(true);
+    if (value.trim().length < MIN_QUERY_LENGTH) {
+      setSuggestions([]);
+    }
     setError(null);
     onChange(null);
   };

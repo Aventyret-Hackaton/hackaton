@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { LEGS } from '@/lib/globe/journey';
 import type { VoxelModelDef } from '@/lib/voxel/model';
 import { VEHICLE_MODELS } from '@/lib/voxel/models';
 
-import { renderModelThumbnails } from './thumbnails';
 import styles from './TravelDirective.module.css';
+import { useModelThumbnails } from './useModelThumbnails';
 
 export type DirectiveStep = {
   id: string;
@@ -38,15 +38,10 @@ export const LEG_STEPS: readonly DirectiveStep[] = LEGS.map((leg) => ({
 export const TravelDirective = ({ steps, currentStep }: TravelDirectiveProps): React.JSX.Element => {
   const listRef = useRef<HTMLOListElement>(null);
   const currentStepRef = useRef<HTMLLIElement>(null);
-  const [icons, setIcons] = useState<Record<string, string>>({});
-  const modelIds = steps.map((step) => step.model.id).join(',');
-
-  useEffect(() => {
-    const models = new Map(steps.map((step) => [step.model.id, step.model]));
-    setIcons(renderModelThumbnails([...models.values()], ICON_SIZE));
-    // The icons only depend on which models the steps use.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelIds]);
+  const icons = useModelThumbnails(
+    steps.map((step) => step.model),
+    ICON_SIZE
+  );
 
   // Scrolls the list itself, never the page around it.
   useEffect(() => {

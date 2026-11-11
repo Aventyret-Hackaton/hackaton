@@ -1,13 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-
 import type { VoxelModelDef } from '@/lib/voxel/model';
 import { FLAGS_MODEL, SIGHT_MODEL_DEFS, VEHICLE_MODELS } from '@/lib/voxel/models';
 
 import styles from './AssetGallery.module.css';
 import { pixelFont } from './pixelFont';
-import { renderModelThumbnails } from './thumbnails';
+import { useModelThumbnails } from './useModelThumbnails';
 
 const IMAGE_SIZE = 220;
 
@@ -18,18 +16,10 @@ const GROUPS: readonly { title: string; models: readonly VoxelModelDef[] }[] = [
     models: [...Object.values(SIGHT_MODEL_DEFS), FLAGS_MODEL]
   }
 ];
+const MODELS = GROUPS.flatMap((group) => group.models);
 
 export const AssetGallery = (): React.JSX.Element => {
-  const [images, setImages] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    setImages(
-      renderModelThumbnails(
-        GROUPS.flatMap((group) => group.models),
-        IMAGE_SIZE
-      )
-    );
-  }, []);
+  const images = useModelThumbnails(MODELS, IMAGE_SIZE);
 
   return (
     <main className={`${pixelFont.variable} ${styles.root}`}>

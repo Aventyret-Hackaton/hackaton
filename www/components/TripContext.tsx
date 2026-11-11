@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useSyncExternalStore } from 'react';
 
 import type { Place } from '@/lib/places';
 
@@ -30,44 +30,56 @@ const parsePlace = (value: unknown): Place | null => {
   return isPlace ? { placeId, address, latitude, longitude } : null;
 };
 
-const readStoredPlaces = (): TripPlaces => {
+const parsePlaces = (stored: string | null | undefined): TripPlaces => {
   try {
-    const stored: unknown = JSON.parse(window.sessionStorage.getItem(STORAGE_KEY) ?? 'null');
-    const { origin, destination } = (stored ?? {}) as Record<string, unknown>;
+    const { origin, destination } = (JSON.parse(stored ?? 'null') ?? {}) as Record<string, unknown>;
     return { origin: parsePlace(origin), destination: parsePlace(destination) };
   } catch {
     return EMPTY_PLACES;
   }
 };
 
-const storePlaces = (places: TripPlaces): void => {
+// Session storage as an external store. The cache also keeps the trip in memory when storage is unavailable.
+const listeners = new Set<() => void>();
+let cached: string | null | undefined;
+
+const subscribe = (listener: () => void): (() => void) => {
+  listeners.add(listener);
+  return (): void => {
+    listeners.delete(listener);
+  };
+};
+
+const getSnapshot = (): string | null => {
+  if (cached === undefined) {
+    try {
+      cached = window.sessionStorage.getItem(STORAGE_KEY);
+    } catch {
+      cached = null;
+    }
+  }
+  return cached;
+};
+
+// The server has no storage, undefined marks the places as not yet loaded.
+const getServerSnapshot = (): undefined => undefined;
+
+const updatePlaces = (patch: Partial<TripPlaces>): void => {
+  cached = JSON.stringify({ ...parsePlaces(getSnapshot()), ...patch });
   try {
-    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(places));
+    window.sessionStorage.setItem(STORAGE_KEY, cached);
   } catch {
     // Storage can be unavailable, the trip then only lives in memory.
   }
+  listeners.forEach((listener) => listener());
 };
 
+const setOrigin = (origin: Place | null): void => updatePlaces({ origin });
+const setDestination = (destination: Place | null): void => updatePlaces({ destination });
+
 export const TripProvider = ({ children }: { children: React.ReactNode }): React.JSX.Element => {
-  const [places, setPlaces] = useState<TripPlaces>(EMPTY_PLACES);
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  // Storage is read after mount so the server and client render the same markup.
-  useEffect(() => {
-    setPlaces(readStoredPlaces());
-    setIsLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    if (isLoaded) {
-      storePlaces(places);
-    }
-  }, [places, isLoaded]);
-
-  const setOrigin = useCallback((origin: Place | null): void => setPlaces((previous) => ({ ...previous, origin })), []);
-  const setDestination = useCallback((destination: Place | null): void => setPlaces((previous) => ({ ...previous, destination })), []);
-
-  const value = useMemo(() => ({ ...places, isLoaded, setOrigin, setDestination }), [places, isLoaded, setOrigin, setDestination]);
+  const stored = useSyncExternalStore<string | null | undefined>(subscribe, getSnapshot, getServerSnapshot);
+  const value = useMemo(() => ({ ...parsePlaces(stored), isLoaded: stored !== undefined, setOrigin, setDestination }), [stored]);
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;
 };
 
