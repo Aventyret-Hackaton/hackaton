@@ -18,10 +18,10 @@ import {
   WebGLRenderer
 } from 'three';
 
-import { createEarth, createMoonGeometry, GLOBE_RADIUS } from '@/lib/globe/earth';
+import { createEarth, createMoonGeometry, GLOBE_RADIUS, MOON_RADIUS } from '@/lib/globe/earth';
 import { DEG, latLonToUnit, samplePath } from '@/lib/globe/geo';
 import type { LatLon } from '@/lib/globe/geo';
-import { LEGS, SIGHTS, STOCKHOLM } from '@/lib/globe/journey';
+import { ARRIVAL_DAY, LEGS, SIGHTS, STOCKHOLM } from '@/lib/globe/journey';
 import type { VehicleId } from '@/lib/globe/journey';
 import { hash3 } from '@/lib/voxel/hash';
 import { buildVoxelGeometry } from '@/lib/voxel/mesher';
@@ -37,6 +37,15 @@ const ARROW_EVERY = 6;
 const COLOR_AHEAD = 0xf4905c;
 const COLOR_CURRENT = 0xffe45c;
 const COLOR_DONE = 0x4d6078;
+
+// The moon keeps its real size ratio and sidereal month, on a much tighter orbit.
+const MOON_SCALE = (GLOBE_RADIUS * 0.273) / MOON_RADIUS;
+const MOON_ORBIT_DAYS = 27.32;
+const MOON_ORBIT_RADIUS = 420;
+const MOON_INCLINATION = 18.3 * DEG;
+const MOON_START_ANGLE = Math.PI + 0.17;
+// The orbit always stays this much wider than the camera distance.
+const MOON_CAMERA_MARGIN = 1.4;
 
 const CAMERA_FOV = 30;
 const CAMERA_START = 152;
@@ -213,7 +222,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
   const glowMaterial = track(new MeshBasicMaterial({ toneMapped: false }));
 
   const moon = new Mesh(track(createMoonGeometry()), voxelMaterial);
-  moon.position.set(-78, 46, -70);
+  moon.scale.setScalar(MOON_SCALE);
   scene.add(moon);
 
   const globe = new Group();
@@ -458,7 +467,26 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     const targetDistance = clamp(CAMERA_START * zoomFactor * fitFactor, CAMERA_MIN, CAMERA_MAX * fitFactor);
     distance += (targetDistance - distance) * ease;
     camera.position.set(0, 0, distance);
-    moon.rotation.y += delta * 0.05;
+  };
+
+  // Day of the journey, read off the leg the traveller is on.
+  const journeyDay = (): number => {
+    const from = LEGS[legIndex].startDay;
+    const to = legIndex < LEGS.length - 1 ? LEGS[legIndex + 1].startDay : ARRIVAL_DAY;
+    return from + (to - from) * legProgress;
+  };
+
+  // One prograde lap per sidereal month of journey time, in the camera's frame.
+  const updateMoon = (): void => {
+    const months = (journeyDay() - LEGS[0].startDay) / MOON_ORBIT_DAYS;
+    const angle = MOON_START_ANGLE + (reducedMotion ? 0 : months * Math.PI * 2);
+    // Wider than the camera distance, so the near side passes behind the camera.
+    const radius = Math.max(MOON_ORBIT_RADIUS, distance * MOON_CAMERA_MARGIN);
+    moon.position.set(radius * Math.sin(angle), -radius * Math.cos(angle) * Math.sin(MOON_INCLINATION), radius * Math.cos(angle) * Math.cos(MOON_INCLINATION));
+    // Tidally locked: the same face always looks at the earth.
+    moon.rotation.y = angle;
+    // Never drawn on the camera's side of the earth, whatever the window shape.
+    moon.visible = moon.position.z < 0;
   };
 
   const updateRouteColors = (): void => {
@@ -525,6 +553,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     else advance(delta);
     updateVehicle();
     updateCamera(delta);
+    updateMoon();
     updateRouteColors();
     updateLabels();
     renderer.render(scene, camera);
