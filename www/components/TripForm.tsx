@@ -3,6 +3,7 @@
 import { useState } from 'react';
 
 import { PlaceAutocomplete } from '@/components/PlaceAutocomplete';
+import { TripGlobe } from '@/components/TripGlobe';
 import type { Place } from '@/lib/places';
 
 export const TripForm = (): React.JSX.Element => {
@@ -17,6 +18,23 @@ export const TripForm = (): React.JSX.Element => {
     }
   };
 
+  const handleReset = (): void => {
+    setTrip(null);
+    setOrigin(null);
+    setDestination(null);
+  };
+
+  if (trip) {
+    return (
+      <>
+        <button type="button" onClick={handleReset}>
+          Ny resa
+        </button>
+        <TripGlobe origin={trip.origin} destination={trip.destination} />
+      </>
+    );
+  }
+
   return (
     <>
       <h1>Vart vill du?</h1>
@@ -26,7 +44,6 @@ export const TripForm = (): React.JSX.Element => {
         <button type="submit" disabled={!origin || !destination}>
           Planera resa
         </button>
-        {trip && <pre>{JSON.stringify(trip, null, 2)}</pre>}
       </form>
     </>
   );
