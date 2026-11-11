@@ -6,7 +6,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Pointless Travel Planner',
-  description: 'Pointless Travel Planner — built on the Äventyret rig.'
+  description: 'En liten omväg.'
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
