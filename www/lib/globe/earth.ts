@@ -148,7 +148,7 @@ export const createEarth = (): Earth => {
   return { geometry, surfaceRadius };
 };
 
-const MOON_RADIUS = 5;
+export const MOON_RADIUS = 5;
 const MOON_COLORS = [0xe8d9b5, 0xd8c8a4, 0xf0e3c2] as const;
 const MOON_CRATER = 0x9b8f86;
 
