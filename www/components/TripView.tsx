@@ -11,6 +11,7 @@ import { isTypingTarget } from '@/components/globe/keyboard';
 import { SCANLINE_HINT, ScanlineOverlay } from '@/components/globe/ScanlineOverlay';
 import { TitleBar } from '@/components/globe/TitleBar';
 import { type DirectiveStep, LEG_STEPS, TravelDirective } from '@/components/globe/TravelDirective';
+import type { GlobePlace } from '@/components/globe/scene';
 import { type KeyHint, VoxelGlobe } from '@/components/globe/VoxelGlobe';
 import { StreetView } from '@/components/StreetView';
 import { latLonToUnit } from '@/lib/globe/geo';
@@ -77,6 +78,9 @@ const getTraveller = (timeline: Timeline, aheadSeconds: number): Traveller => {
   return { modelId: LEGS[legIndex].modelId, unit: trackPoint(track, legProgress, from), heading, urban: false, moving: true };
 };
 
+// The flag on the globe is named after the first part of the address.
+const toGlobePlace = ({ address, latitude, longitude }: Place): GlobePlace => ({ name: address.split(',')[0], position: [latitude, longitude] });
+
 // Thousands are separated by spaces, as in Swedish.
 const formatSpeed = (speed: number): string => (speed === 1 ? 'realtid' : `${speed.toLocaleString('sv-SE')}x`);
 
@@ -101,6 +105,7 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
   const [legIndex, setLegIndex] = useState(0);
   const phase = usePhase(trip?.timeline ?? null);
   const steps = useMemo(() => (trip ? buildSteps(trip.legs) : LEG_STEPS), [trip]);
+  const places = useMemo(() => ({ origin: toGlobePlace(origin), destination: toGlobePlace(destination) }), [origin, destination]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -172,6 +177,7 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
             className={styles.globe}
             extraHints={hints}
             onLegChange={setLegIndex}
+            places={places}
             getProgress={(): number => getGlobeProgress(getTimelineState(trip.timeline, performance.now()))}
           />
         ) : (

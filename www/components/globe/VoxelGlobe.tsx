@@ -7,7 +7,7 @@ import { ARRIVAL_DAY, LEGS } from '@/lib/globe/journey';
 import { isTypingTarget } from './keyboard';
 import { pixelFont } from './pixelFont';
 import { createGlobeScene } from './scene';
-import type { GlobeSceneHandle, GlobeStatus } from './scene';
+import type { GlobePlaces, GlobeSceneHandle, GlobeStatus } from './scene';
 import styles from './VoxelGlobe.module.css';
 
 export type KeyHint = readonly [keys: string, action: string];
@@ -17,6 +17,8 @@ type VoxelGlobeProps = {
   getProgress?: () => number;
   onLegChange?: (index: number) => void;
   onStatusChange?: (status: GlobeStatus) => void;
+  // The two addresses in Stockholm. Without them the globe uses a pair of its own.
+  places?: GlobePlaces;
   extraHints?: readonly KeyHint[];
   className?: string;
 };
@@ -47,17 +49,21 @@ const INITIAL_STATUS: GlobeStatus = {
   follow: true
 };
 
-export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, extraHints = [], className }: VoxelGlobeProps): React.JSX.Element => {
+export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, places, extraHints = [], className }: VoxelGlobeProps): React.JSX.Element => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const labelLayerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<GlobeSceneHandle | null>(null);
   const callbacksRef = useRef({ getProgress, onLegChange, onStatusChange });
+  const placesRef = useRef(places);
+  // The scene is rebuilt when the addresses change, not when the object does.
+  const placesKey = JSON.stringify(places ?? null);
   const [legIndex, setLegIndex] = useState(0);
   const [status, setStatus] = useState<GlobeStatus>(INITIAL_STATUS);
   const driven = getProgress !== undefined;
 
   useEffect(() => {
     callbacksRef.current = { getProgress, onLegChange, onStatusChange };
+    placesRef.current = places;
   });
 
   useEffect(() => {
@@ -72,6 +78,9 @@ export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, extraHint
       sightLabelClassName: styles.sightLabel,
       hereLabelClassName: `${styles.sightLabel} ${styles.hereLabel}`,
       hereLabelText: 'Här är du',
+      placeLabelClassName: styles.sightLabel,
+      districtLabelClassName: styles.districtLabel,
+      places: placesRef.current,
       reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
       getProgress: driven ? (): number => callbacksRef.current.getProgress?.() ?? 0 : undefined,
       onLegChange: (index): void => {
@@ -88,7 +97,7 @@ export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, extraHint
       sceneRef.current = null;
       scene.dispose();
     };
-  }, [driven]);
+  }, [driven, placesKey]);
 
   useEffect(() => {
     const pressed = new Set<string>();

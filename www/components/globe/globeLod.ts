@@ -1,28 +1,49 @@
-import { Group, Mesh, MeshLambertMaterial, Vector2 } from 'three';
+import { Group, type IUniform, Mesh, MeshLambertMaterial, Vector2, type Vector3, type Vector4 } from 'three';
 
 import { createEarthLevelBuilder, DEFAULT_EARTH_LEVEL, EARTH_LEVEL_COUNT } from '@/lib/globe/earth';
 import type { EarthLevel, EarthLevelBuilder } from '@/lib/globe/earth';
+
+import { DITHER_GLSL, REGION_GLSL, REGION_RIM } from './dither';
 
 // Part of the step between two levels in which one gives way to the other.
 // The zoom positions rest outside it, so a still globe is never half way.
 const BLEND_START = 0.12;
 const BLEND_END = 0.88;
-// The levels next to the starting one are generated first.
-const BUILD_ORDER = [1, -1, 2, -2, 3, -3];
+// The finer levels are generated first: the journey opens close to the ground.
+const BUILD_ORDER = [1, 2, 3, -1, -2];
+// A cut-out only reaches this far into the globe, so it never opens the far side.
+const CUTOUT_DEPTH = 8;
+
+const VERTEX_PARS = /* glsl */ `
+uniform float uLodVoxel;
+uniform vec3 uCutOrigin;
+uniform vec3 uCutEast;
+uniform vec3 uCutUp;
+uniform vec3 uCutSouth;
+varying vec3 vCut;
+`;
+
+// Where the voxel lies in the frame of the cut-out: east, up and south of its origin.
+const VERTEX_MAIN = /* glsl */ `
+{
+  vec3 cutPoint = (transformed - 0.5) * uLodVoxel - uCutOrigin;
+  vCut = vec3(dot(cutPoint, uCutEast), dot(cutPoint, uCutUp), dot(cutPoint, uCutSouth));
+}
+`;
 
 const SHADER_PARS = /* glsl */ `
 uniform float uLodBlend;
 uniform float uLodFine;
 uniform vec2 uLodViewport;
+uniform vec2 uCutAnchor;
+uniform vec4 uCutReach;
+uniform float uCutFront;
+varying vec3 vCut;
 
 // How much later the edge of the view changes than its centre.
 const float LOD_SPREAD = 0.7;
-
-float lodBayer(vec2 pixel) {
-  const float pattern[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
-  int index = int(mod(pixel.x, 4.0)) + int(mod(pixel.y, 4.0)) * 4;
-  return (pattern[index] + 0.5) / 16.0;
-}
+${DITHER_GLSL}
+${REGION_GLSL}
 `;
 
 // The finer level takes the pixels the coarser one gives up, so every pixel
@@ -31,10 +52,25 @@ const SHADER_DISCARD = /* glsl */ `
 {
   vec2 lodOffset = (gl_FragCoord.xy - 0.5 * uLodViewport) / (0.5 * length(uLodViewport));
   float lodLocal = clamp(uLodBlend * (1.0 + LOD_SPREAD) - min(length(lodOffset), 1.0) * LOD_SPREAD, 0.0, 1.0);
-  float lodPattern = lodBayer(gl_FragCoord.xy);
+  float lodPattern = ditherBayer(gl_FragCoord.xy);
   if (uLodFine > 0.5 ? lodPattern >= lodLocal : lodPattern < lodLocal) discard;
+  // Whatever is drawn in the cut-out has these pixels instead.
+  if (vCut.y > -${CUTOUT_DEPTH.toFixed(1)} && regionShare(vCut.xz - uCutAnchor, uCutReach) <= uCutFront - ${REGION_RIM.toFixed(2)} * lodPattern) discard;
 }
 `;
+
+// A patch of the globe that something more detailed is drawn in place of.
+export type GlobeCutout = {
+  // The middle of the patch, and its east, up and south directions, in the globe's own space.
+  origin: Vector3;
+  east: Vector3;
+  up: Vector3;
+  south: Vector3;
+  // The patch itself, in that frame: see regionShare.
+  anchor: IUniform<Vector2>;
+  reach: IUniform<Vector4>;
+  front: IUniform<number>;
+};
 
 export type LodBlend = {
   // The coarser and the finer level, and how far the finer one has taken over.
@@ -45,12 +81,15 @@ export type LodBlend = {
 
 export type GlobeLodOptions = {
   onLevelReady: (level: EarthLevel) => void;
+  cutout: GlobeCutout;
 };
 
 export type GlobeLod = {
   group: Group;
   defaultLevel: EarthLevel;
   level: (index: number) => EarthLevel | null;
+  // The most detailed level that can be shown without waiting for it.
+  finestReady: () => number;
   // Spends a few milliseconds generating the levels that are not ready yet.
   build: (budgetMs: number) => void;
   // Shows the level, or pair of levels, that belongs to the zoom coordinate.
@@ -65,27 +104,42 @@ type LevelSlot = {
   material: MeshLambertMaterial;
   blend: { value: number };
   fine: { value: number };
+  voxel: { value: number };
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
-export const createGlobeLod = ({ onLevelReady }: GlobeLodOptions): GlobeLod => {
+export const createGlobeLod = ({ onLevelReady, cutout }: GlobeLodOptions): GlobeLod => {
   const group = new Group();
   const viewport = { value: new Vector2(1, 1) };
 
   const slots: LevelSlot[] = Array.from({ length: EARTH_LEVEL_COUNT }, (_, index) => {
     const blend = { value: 1 };
     const fine = { value: 1 };
+    const voxel = { value: 1 };
     const material = new MeshLambertMaterial({ vertexColors: true });
     material.onBeforeCompile = (shader): void => {
       shader.uniforms.uLodBlend = blend;
       shader.uniforms.uLodFine = fine;
       shader.uniforms.uLodViewport = viewport;
+      Object.assign(shader.uniforms, {
+        uLodVoxel: voxel,
+        uCutOrigin: { value: cutout.origin },
+        uCutEast: { value: cutout.east },
+        uCutUp: { value: cutout.up },
+        uCutSouth: { value: cutout.south },
+        uCutAnchor: cutout.anchor,
+        uCutReach: cutout.reach,
+        uCutFront: cutout.front
+      });
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', `#include <common>\n${VERTEX_PARS}`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>\n${VERTEX_MAIN}`);
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', `#include <common>\n${SHADER_PARS}`)
         .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\n${SHADER_DISCARD}`);
     };
-    return { builder: createEarthLevelBuilder(index), level: null, mesh: null, material, blend, fine };
+    return { builder: createEarthLevelBuilder(index), level: null, mesh: null, material, blend, fine, voxel };
   });
 
   const adopt = (slot: LevelSlot, level: EarthLevel): EarthLevel => {
@@ -97,6 +151,7 @@ export const createGlobeLod = ({ onLevelReady }: GlobeLodOptions): GlobeLod => {
     group.add(mesh);
     slot.level = level;
     slot.mesh = mesh;
+    slot.voxel.value = level.voxelSize;
     onLevelReady(level);
     return level;
   };
@@ -124,6 +179,7 @@ export const createGlobeLod = ({ onLevelReady }: GlobeLodOptions): GlobeLod => {
     group,
     defaultLevel,
     level: (index): EarthLevel | null => slots[index]?.level ?? null,
+    finestReady: (): number => slots.reduce((finest, slot, index) => (slot.level ? index : finest), DEFAULT_EARTH_LEVEL),
     build: (budgetMs): void => {
       const deadline = performance.now() + budgetMs;
       while (pending.length > 0 && performance.now() < deadline) {

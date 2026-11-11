@@ -39,6 +39,13 @@ in `www/app`.
 - **`/globe/assets`** — contact sheet of every voxel model.
 - The globe has six detail levels, one per zoom step. `globeLod.ts` in
   `www/components/globe` blends between them as the camera moves.
+- The trip opens on a close-up of Stockholm with the two addresses flagged A
+  and B. When the journey starts the camera pulls back to the globe and the
+  flags follow along. On the way out the city gives way to three ever coarser
+  levels of the land around it, and those to the detail levels of the globe,
+  which has a cut-out where they lie. The city is a hand-drawn voxel map in
+  `www/lib/city`, the land around it comes from `region.ts` there, and
+  `cityIntro.ts` in `www/components/globe` lets them into the globe.
 - **Code:** scene and components in `www/components/globe`, voxel engine and
   models in `www/lib/voxel`, route and sights in `www/lib/globe/journey.ts`.
 - `www/components/TripGlobe.tsx` is no longer used.

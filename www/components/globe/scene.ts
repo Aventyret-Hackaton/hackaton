@@ -3,6 +3,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  DirectionalLight,
   Group,
   InstancedMesh,
   Matrix4,
@@ -18,7 +19,9 @@ import {
   WebGLRenderer
 } from 'three';
 
-import { createMoonGeometry, DEFAULT_EARTH_LEVEL, EARTH_LEVEL_COUNT, GLOBE_RADIUS, MOON_RADIUS } from '@/lib/globe/earth';
+import { DISTRICT_NAMES } from '@/lib/city/stockholmMap';
+import { bearing, type Coordinates, pickExit, SLUSSEN } from '@/lib/geo';
+import { createMoonGeometry, createSurfaceLookup, DEFAULT_EARTH_LEVEL, EARTH_LEVEL_COUNT, GLOBE_RADIUS, MOON_RADIUS } from '@/lib/globe/earth';
 import { DEG, latLonToUnit } from '@/lib/globe/geo';
 import type { LatLon } from '@/lib/globe/geo';
 import { ARRIVAL_DAY, LEGS, locateJourney, SIGHTS, STOCKHOLM } from '@/lib/globe/journey';
@@ -26,9 +29,10 @@ import type { VehicleId } from '@/lib/globe/journey';
 import { JOURNEY_TRACKS, type Track, trackPoint } from '@/lib/globe/track';
 import { hash3 } from '@/lib/voxel/hash';
 import { buildVoxelGeometry } from '@/lib/voxel/mesher';
-import { buildModel } from '@/lib/voxel/model';
-import { FLAGS_MODEL, SIGHT_MODEL_DEFS, VEHICLE_MODELS } from '@/lib/voxel/models';
+import { buildModel, buildPlantedModel } from '@/lib/voxel/model';
+import { GOAL_FLAG_MODEL, SIGHT_MODEL_DEFS, START_FLAG_MODEL, VEHICLE_MODELS } from '@/lib/voxel/models';
 
+import { createCityIntro } from './cityIntro';
 import { createGlobeLod } from './globeLod';
 import type { LodBlend } from './globeLod';
 import { addVoxelLights } from './thumbnails';
@@ -49,6 +53,7 @@ const MOON_START_ANGLE = Math.PI + 0.17;
 const MOON_CAMERA_MARGIN = 1.4;
 
 const CAMERA_FOV = 30;
+const CAMERA_NEAR = 1;
 const CAMERA_START = 152;
 const CAMERA_MIN = 70;
 // One key press moves the camera this much, and on to the next detail level.
@@ -74,6 +79,21 @@ const FLAGS_SCALE = 0.34;
 // Planted just north of the start so the vehicles never hide the flags.
 const FLAGS_OFFSET: LatLon = [2.4, 0];
 const LABEL_MIN_FACING = 0.32;
+
+// The journey opens on a close-up of Stockholm and pulls back to the whole globe.
+const INTRO_SECONDS = 3.4;
+const INTRO_ELEVATION = 48 * DEG;
+// The water of the city lies this far above the sea level of the globe.
+const CITY_WATER_LIFT = 0.35;
+// The flags are this much larger in the close-up than their size on the globe gives.
+const CLOSE_FLAG_SCALE = 1.5;
+const CITY_LABELS_END = 0.2;
+const GLOBE_LABELS_START = 0.88;
+// Shares of the pull-back between which the traveller grows into view.
+const TRAVELLER_APPEARS = [0.3, 0.5];
+const CLOSE_LIGHT = 2.2;
+// Shares of the pull-back: when the extra light on the flags is gone, and the labels change over.
+const CLOSE_LIGHT_END = 0.5;
 const LABEL_RANGE = Math.cos(32 * DEG);
 const LABELS_SHOWN = 2;
 
@@ -93,6 +113,16 @@ export const VEHICLES: Record<VehicleId, { scale: number; motion: Motion }> = {
   bus: { scale: 0.33, motion: 'roll' }
 };
 
+export type GlobePlace = { name: string; position: LatLon };
+
+// Where the trip starts and ends in Stockholm.
+export type GlobePlaces = { origin: GlobePlace; destination: GlobePlace };
+
+const DEFAULT_PLACES: GlobePlaces = {
+  origin: { name: 'T-Centralen', position: [59.331, 18.0597] },
+  destination: { name: 'Medborgarplatsen', position: [59.3143, 18.0735] }
+};
+
 export type GlobeStatus = {
   running: boolean;
   started: boolean;
@@ -106,6 +136,9 @@ export type GlobeSceneOptions = {
   sightLabelClassName: string;
   hereLabelClassName: string;
   hereLabelText: string;
+  placeLabelClassName: string;
+  districtLabelClassName: string;
+  places?: GlobePlaces;
   reducedMotion: boolean;
   // Journey progress from 0 to 1. Without it the scene runs on its own clock.
   getProgress?: () => number;
@@ -126,11 +159,23 @@ export type GlobeSceneHandle = {
 type Marker = { leg: number; fraction: number; unit: Vector3; heading: Vector3 };
 
 // Something standing on the ground, with its surface radius on every detail level.
-type Landmark = { mesh: Mesh; unit: Vector3; scale: number; radii: number[]; label: Label | null; labelLift: number };
+type Landmark = {
+  mesh: Mesh;
+  unit: Vector3;
+  scale: number;
+  radii: number[];
+  radius: number;
+  // Where it stands in the close-up of the city, if it starts out there.
+  home: Vector3 | null;
+  label: Label | null;
+  labelLift: number;
+};
 
 type Label = { element: HTMLElement; anchor: Vector3; closeness: number };
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+
+const toCoordinates = ([latitude, longitude]: LatLon): Coordinates => ({ latitude, longitude });
 
 const eastOf = (unit: Vector3, target: Vector3): Vector3 => {
   target.set(unit.z, 0, -unit.x);
@@ -192,7 +237,11 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
 
   const scene = new Scene();
   addVoxelLights(scene);
-  const camera = new PerspectiveCamera(CAMERA_FOV, 1, 1, 2000);
+  // In the close-up the flags face the camera with their backs to the sun.
+  const closeLight = new DirectionalLight(0xfff0d8, 0);
+  closeLight.position.set(0.25, -0.45, 1);
+  scene.add(closeLight);
+  const camera = new PerspectiveCamera(CAMERA_FOV, 1, CAMERA_NEAR, 2000);
   camera.position.set(0, 0, CAMERA_START);
 
   const stars = createStars();
@@ -209,11 +258,43 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
 
   const globe = new Group();
   scene.add(globe);
+
+  // The city of the opening shot and the land around it are let into the globe at Stockholm.
+  const places = options.places ?? DEFAULT_PLACES;
+  const departure = toCoordinates(places.origin.position);
+  const stockholmUnit = latLonToUnit(STOCKHOLM);
+  const stockholmEast = eastOf(stockholmUnit, new Vector3());
+  const stockholmSouth = new Vector3().crossVectors(stockholmEast, stockholmUnit);
+  const cityRadius = GLOBE_RADIUS + CITY_WATER_LIFT;
+  const cityOrigin = stockholmUnit.clone().multiplyScalar(cityRadius);
+  const surfaceAt = createSurfaceLookup();
+  const arrowGeometry = createArrowGeometry();
+  const city = createCityIntro({
+    origin: places.origin.position,
+    destination: places.destination.position,
+    exitBearing: bearing(departure, pickExit(departure, toCoordinates(places.destination.position))),
+    entry: [SLUSSEN.latitude, SLUSSEN.longitude],
+    routeColor: COLOR_AHEAD,
+    arrowGeometry,
+    elevation: INTRO_ELEVATION,
+    halfFov: (CAMERA_FOV / 2) * DEG,
+    radius: cityRadius,
+    surface: (x, z) => {
+      const unit = new Vector3().copy(cityOrigin).addScaledVector(stockholmEast, x).addScaledVector(stockholmSouth, z).normalize();
+      const { kind, palette } = surfaceAt(unit.x, unit.y, unit.z);
+      return { water: kind === 'ocean' || kind === 'shallow', bare: kind === 'rock' || kind === 'snow', palette };
+    }
+  });
+  city.group.matrix.makeBasis(stockholmEast, stockholmUnit, stockholmSouth).setPosition(cityOrigin);
+  globe.add(city.group);
+  const cityToGlobe = (local: Vector3): Vector3 => local.clone().applyMatrix4(city.group.matrix);
+
   const landmarks: Landmark[] = [];
   const lod = createGlobeLod({
     onLevelReady: (level): void => {
       for (const landmark of landmarks) landmark.radii[level.index] = level.surfaceRadius(landmark.unit);
-    }
+    },
+    cutout: { origin: cityOrigin, east: stockholmEast, up: stockholmUnit, south: stockholmSouth, ...city.footprint }
   });
   globe.add(lod.group);
   let routeRadius = lod.defaultLevel.routeRadius;
@@ -222,6 +303,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     a: new Vector3(),
     b: new Vector3(),
     c: new Vector3(),
+    d: new Vector3(),
     forward: new Vector3(),
     right: new Vector3(),
     matrix: new Matrix4(),
@@ -262,8 +344,9 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
   };
 
   const placeMarkers = (mesh: InstancedMesh, markers: Marker[]): void => {
+    const radius = cityRadius + (routeRadius - cityRadius) * introShift;
     markers.forEach((marker, index) => {
-      mesh.setMatrixAt(index, surfaceMatrix(marker.unit, routeRadius, marker.heading, scratch.matrix));
+      mesh.setMatrixAt(index, surfaceMatrix(marker.unit, radius, marker.heading, scratch.matrix).scale(scratch.a.setScalar(introScale)));
     });
     mesh.instanceMatrix.needsUpdate = true;
   };
@@ -278,12 +361,11 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     });
     // The markers move with the detail level, so their bounds are not fixed.
     mesh.frustumCulled = false;
-    placeMarkers(mesh, markers);
     globe.add(mesh);
     return mesh;
   };
   const dashMesh = createMarkers(new BoxGeometry(0.9, 0.5, 0.5), dashes);
-  const arrowMesh = createMarkers(createArrowGeometry(), arrows);
+  const arrowMesh = createMarkers(arrowGeometry, arrows);
 
   const paintMarkers = (mesh: InstancedMesh, markers: Marker[], leg: number, fraction: number): void => {
     markers.forEach((marker, index) => {
@@ -309,22 +391,25 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     vehicleMeshes.set(id, mesh);
   });
 
-  const placeLandmark = (landmark: Landmark, radius: number): void => {
-    const { mesh, unit, scale, label, labelLift } = landmark;
-    mesh.matrix.copy(surfaceMatrix(unit, radius, eastOf(unit, scratch.c), scratch.matrix)).scale(scratch.a.setScalar(scale));
+  // During the opening a landmark is as small as the view is close, and may still be in the city.
+  const placeLandmark = ({ mesh, unit, scale, radius, home, label, labelLift }: Landmark): void => {
+    const position = scratch.d.copy(unit).multiplyScalar(radius);
+    if (home) position.lerpVectors(home, position, introShift);
+    const height = position.length();
+    const up = position.divideScalar(height);
+    const size = introScale * (home ? CLOSE_FLAG_SCALE + (1 - CLOSE_FLAG_SCALE) * introShift : 1);
+    mesh.matrix.copy(surfaceMatrix(up, height, eastOf(unit, scratch.c), scratch.matrix)).scale(scratch.a.setScalar(scale * size));
     mesh.matrixWorldNeedsUpdate = true;
-    label?.anchor.copy(unit).multiplyScalar(radius + labelLift);
+    label?.anchor.copy(up).multiplyScalar(height + labelLift * size);
   };
 
-  const addLandmark = (geometry: BufferGeometry, position: LatLon, scale: number, label: Label | null, labelLift: number): void => {
-    const unit = latLonToUnit(position);
+  const addLandmark = (geometry: BufferGeometry, unit: Vector3, scale: number, label: Label | null, labelLift: number, home: Vector3 | null = null): Mesh => {
     const mesh = new Mesh(track(geometry), voxelMaterial);
     mesh.matrixAutoUpdate = false;
     globe.add(mesh);
     const radii = Array.from({ length: EARTH_LEVEL_COUNT }, (_, index) => lod.level(index)?.surfaceRadius(unit) ?? Number.NaN);
-    const landmark = { mesh, unit, scale, radii, label, labelLift };
-    landmarks.push(landmark);
-    placeLandmark(landmark, radii[DEFAULT_EARTH_LEVEL]);
+    landmarks.push({ mesh, unit, scale, radii, radius: radii[DEFAULT_EARTH_LEVEL], home, label, labelLift });
+    return mesh;
   };
 
   const createLabel = (className: string, text: string, anchor: Vector3): Label => {
@@ -339,12 +424,34 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
   const labels: Label[] = SIGHTS.map((sight) => {
     const built = buildModel(SIGHT_MODEL_DEFS[sight.modelId]);
     const label = createLabel(options.sightLabelClassName, sight.name, new Vector3());
-    addLandmark(built.geometry, sight.position, SIGHT_SCALE, label, built.size.y * SIGHT_SCALE + 0.6);
+    addLandmark(built.geometry, latLonToUnit(sight.position), SIGHT_SCALE, label, built.size.y * SIGHT_SCALE + 0.6);
     return label;
   });
-  addLandmark(buildModel(FLAGS_MODEL).geometry, [STOCKHOLM[0] + FLAGS_OFFSET[0], STOCKHOLM[1] + FLAGS_OFFSET[1]], FLAGS_SCALE, null, 0);
 
   const hereLabel = createLabel(options.hereLabelClassName, options.hereLabelText, new Vector3());
+
+  // Created first, so that the names of the two addresses are drawn on top of them.
+  const districtLabels = DISTRICT_NAMES.map(({ name, at }) => createLabel(options.districtLabelClassName, name, cityToGlobe(city.locate(at))));
+
+  // The flags stand at the two addresses, and end up side by side north of the city.
+  const flagsUnit = latLonToUnit([STOCKHOLM[0] + FLAGS_OFFSET[0], STOCKHOLM[1] + FLAGS_OFFSET[1]]);
+  const flagsEast = eastOf(flagsUnit, new Vector3());
+  const placeLabels = [
+    { model: START_FLAG_MODEL, side: -1, home: city.origin, name: places.origin.name },
+    { model: GOAL_FLAG_MODEL, side: 1, home: city.destination, name: places.destination.name }
+  ].map(({ model, side, home, name }) => {
+    const built = buildPlantedModel(model);
+    const unit = flagsUnit
+      .clone()
+      .multiplyScalar(GLOBE_RADIUS)
+      .addScaledVector(flagsEast, side * FLAGS_SCALE)
+      .normalize();
+    const label = createLabel(options.placeLabelClassName, name, new Vector3());
+    // Drawn after the route of the close-up, which ignores what is in front of it.
+    addLandmark(built.geometry, unit, FLAGS_SCALE, label, (built.size.y + 2) * FLAGS_SCALE, cityToGlobe(home)).renderOrder = 2;
+    return label;
+  });
+  const vehicleHome = cityToGlobe(city.origin);
 
   // State
   let legIndex = 0;
@@ -371,10 +478,20 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
   let idleTime = 0;
   let elapsed = 0;
   let paintedKey = -1;
+  // How far the opening has pulled back, and what that does to the things on the globe:
+  // they keep their size on screen, and slide from the city to their place.
+  let introTime = 0;
+  let introEase = 0;
+  let introScale = 1;
+  let introShift = 1;
+  let introNear = 1;
+  const introAnchor = new Vector3();
+  let layoutKey = -1;
   let frame = 0;
   let previousTime = performance.now();
   const vehicleUnit = new Vector3();
   const vehicleHeading = new Vector3();
+  const vehicleTop = new Vector3();
 
   const setStatus = (patch: Partial<GlobeStatus>): void => {
     status = { ...status, ...patch };
@@ -419,13 +536,24 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     setLeg(legIndex + 1, progress);
   };
 
-  const updateVehicle = (): void => {
+  const locateVehicle = (): void => {
     const legTrack = tracks[legIndex];
     trackPoint(legTrack, legProgress, vehicleUnit);
     headingAt(legTrack, legProgress, vehicleHeading);
-    surfaceMatrix(vehicleUnit, routeRadius, vehicleHeading, vehicleHolder.matrix);
+  };
 
+  const updateVehicle = (): void => {
     const activeId = LEGS[legIndex].modelId;
+    const position = scratch.d.copy(vehicleUnit).multiplyScalar(routeRadius);
+    if (introShift < 1) position.lerpVectors(vehicleHome, position, introShift);
+    const height = position.length();
+    const up = position.divideScalar(height);
+    // The traveller only appears once the houses are too small to stand among.
+    const size = introScale * clamp((introEase - TRAVELLER_APPEARS[0]) / (TRAVELLER_APPEARS[1] - TRAVELLER_APPEARS[0]), 0, 1);
+    surfaceMatrix(up, height, vehicleHeading, vehicleHolder.matrix).scale(scratch.a.setScalar(size));
+    vehicleHolder.visible = size > 0;
+    vehicleTop.copy(up).multiplyScalar(height + ((vehicleHeights.get(activeId) ?? 0) + 1.4) * introScale);
+
     const pose = reducedMotion ? 0 : Math.floor(elapsed * POSES_PER_SECOND) / POSES_PER_SECOND;
     const moving = status.running ? 1 : 0.35;
     vehicleMeshes.forEach((mesh, id) => {
@@ -448,7 +576,10 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
       targetYaw = -Math.atan2(vehicleUnit.x, vehicleUnit.z);
       // Zoomed in, the globe may tilt further so the traveller stays in view.
       const limit = clamp(FOLLOW_PITCH_LIMIT + (1 - zoomFactor) * 1.5, FOLLOW_PITCH_LIMIT, PITCH_LIMIT);
-      targetPitch = clamp(Math.asin(clamp(vehicleUnit.y, -1, 1)) - VIEW_LATITUDE, -limit, limit);
+      const followPitch = clamp(Math.asin(clamp(vehicleUnit.y, -1, 1)) - VIEW_LATITUDE, -limit, limit);
+      // The close-up looks down on the city at a fixed angle.
+      const closePitch = Math.asin(stockholmUnit.y) - (Math.PI / 2 - INTRO_ELEVATION);
+      targetPitch = closePitch + (followPitch - closePitch) * introEase;
     } else {
       idleTime += delta;
       if (idleTime > IDLE_SPIN_DELAY && !reducedMotion) {
@@ -464,7 +595,38 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
 
     const targetDistance = clamp(CAMERA_START * zoomFactor * fitFactor, CAMERA_MIN, CAMERA_MAX * fitFactor);
     distance += (targetDistance - distance) * ease;
-    camera.position.set(0, 0, distance);
+    placeCamera();
+  };
+
+  // Pulls straight back from the close-up while the city drifts to its place on screen.
+  const placeCamera = (): void => {
+    const anchor = scratch.a.copy(introAnchor).applyEuler(globe.rotation);
+    const far = distance - anchor.z;
+    const depth = introEase >= 1 ? far : introNear * (far / introNear) ** introEase;
+    introScale = depth / far;
+    introShift = (depth - introNear) / (far - introNear);
+    const centred = 1 - introEase * introScale;
+    camera.position.set(anchor.x * centred, anchor.y * centred, anchor.z + depth);
+    const near = clamp(depth * 0.3, 0.05, CAMERA_NEAR);
+    if (near !== camera.near) {
+      camera.near = near;
+      camera.updateProjectionMatrix();
+    }
+  };
+
+  const frameIntro = (): void => {
+    const framing = city.frame(camera.aspect);
+    introAnchor.copy(cityToGlobe(framing.target));
+    introNear = framing.distance;
+  };
+
+  const updateIntro = (delta: number): void => {
+    const goal = status.started ? 1 : 0;
+    const step = reducedMotion ? 1 : delta / INTRO_SECONDS;
+    introTime = goal > introTime ? Math.min(goal, introTime + step) : Math.max(goal, introTime - step);
+    introEase = introTime * introTime * (3 - 2 * introTime);
+    city.setProgress(introEase);
+    closeLight.intensity = CLOSE_LIGHT * (1 - clamp(introEase / CLOSE_LIGHT_END, 0, 1));
   };
 
   // Day of the journey, read off the leg the traveller is on.
@@ -502,20 +664,33 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
       label.element.style.display = 'none';
       return;
     }
-    world.project(camera);
-    const x = Math.round((world.x * 0.5 + 0.5) * width);
-    const y = Math.round((-world.y * 0.5 + 0.5) * height);
+    showLabel(label, world.project(camera), clamp((facing - LABEL_MIN_FACING) / 0.2, 0, 1), width, height);
+  };
+
+  const showLabel = (label: Label, projected: Vector3, opacity: number, width: number, height: number): void => {
+    const x = Math.round((projected.x * 0.5 + 0.5) * width);
+    const y = Math.round((-projected.y * 0.5 + 0.5) * height);
     label.element.style.display = 'block';
-    label.element.style.opacity = String(clamp((facing - LABEL_MIN_FACING) / 0.2, 0, 1));
+    label.element.style.opacity = String(opacity);
     label.element.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+  };
+
+  // Names in the city: shown in the close-up only, and never from behind the camera.
+  const positionCityLabel = (label: Label, opacity: number, width: number, height: number): void => {
+    const projected = scratch.a.copy(label.anchor).applyMatrix4(globe.matrixWorld).project(camera);
+    if (opacity <= 0 || projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) {
+      label.element.style.display = 'none';
+      return;
+    }
+    showLabel(label, projected, opacity, width, height);
   };
 
   const updateLabels = (): void => {
     scene.updateMatrixWorld();
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
-    const vehicleHeight = vehicleHeights.get(LEGS[legIndex].modelId) ?? 0;
-    hereLabel.anchor.copy(vehicleUnit).multiplyScalar(routeRadius + vehicleHeight + 1.4);
+    const onGlobe = introEase > GLOBE_LABELS_START;
+    hereLabel.anchor.copy(vehicleTop);
     // Sights are named near the traveller, or near the view centre when steering freely.
     if (status.follow) focus.copy(vehicleUnit);
     else focus.set(0, 0, 1).applyQuaternion(scratch.rotation.copy(globe.quaternion).invert());
@@ -524,10 +699,14 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     }
     const threshold = Math.max(LABEL_RANGE, labels.map((label) => label.closeness).sort((a, b) => b - a)[LABELS_SHOWN - 1]);
     for (const label of labels) {
-      positionLabel(label, label.closeness >= threshold, width, height);
+      positionLabel(label, onGlobe && label.closeness >= threshold, width, height);
     }
     // Before departure and after arrival the flags mark the spot instead.
-    positionLabel(hereLabel, status.started && !status.finished, width, height);
+    positionLabel(hereLabel, onGlobe && status.started && !status.finished, width, height);
+    const inCity = 1 - clamp(introEase / CITY_LABELS_END, 0, 1);
+    for (const label of [...placeLabels, ...districtLabels]) {
+      positionCityLabel(label, inCity, width, height);
+    }
   };
 
   // Moves the route and everything on the ground to the height of the visible detail.
@@ -537,19 +716,29 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     appliedBlend = key;
     const mix = (coarse: number, fine: number): number => (amount <= 0 ? coarse : amount >= 1 ? fine : coarse + (fine - coarse) * amount);
     routeRadius = mix(lod.level(from)?.routeRadius ?? routeRadius, lod.level(to)?.routeRadius ?? routeRadius);
+    for (const landmark of landmarks) {
+      landmark.radius = mix(landmark.radii[from], landmark.radii[to]);
+    }
+    layoutKey = -1;
+  };
+
+  // The route and the landmarks move when the detail level or the opening does.
+  const updateLayout = (): void => {
+    const key = introScale + introShift;
+    if (key === layoutKey) return;
+    layoutKey = key;
     placeMarkers(dashMesh, dashes);
     placeMarkers(arrowMesh, arrows);
-    for (const landmark of landmarks) {
-      placeLandmark(landmark, mix(landmark.radii[from], landmark.radii[to]));
-    }
+    for (const landmark of landmarks) placeLandmark(landmark);
   };
 
   // The detail level follows the camera distance, so it changes at the pace of the zoom.
   const updateDetail = (): void => {
     lod.build(LOD_BUILD_BUDGET_MS);
-    const zoom = distance / (CAMERA_START * fitFactor);
+    const zoom = camera.position.length() / (CAMERA_START * fitFactor);
     const coordinate = DEFAULT_EARTH_LEVEL - Math.log(zoom) / Math.log(ZOOM_STEP_RATIO);
-    applyBlend(lod.update(coordinate, bufferWidth, bufferHeight));
+    // During the opening the globe never stops to generate a level it has not got yet.
+    applyBlend(lod.update(introEase < 1 ? Math.min(coordinate, lod.finestReady()) : coordinate, bufferWidth, bufferHeight));
   };
 
   const resize = (): void => {
@@ -562,20 +751,26 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     camera.aspect = width / height;
     fitFactor = 1 / Math.min(1, camera.aspect);
     camera.updateProjectionMatrix();
+    frameIntro();
   };
   const observer = new ResizeObserver(resize);
   observer.observe(canvas);
   resize();
 
   const tick = (time: number): void => {
-    const delta = Math.min(0.05, (time - previousTime) / 1000);
+    // A frame can carry a time from before the scene was made, when the tab is in the background.
+    const delta = clamp((time - previousTime) / 1000, 0, 0.05);
     previousTime = time;
     elapsed += delta;
     if (options.getProgress) syncToProgress(options.getProgress());
     else advance(delta);
+    city.build();
+    updateIntro(delta);
     updateDetail();
-    updateVehicle();
+    locateVehicle();
     updateCamera(delta);
+    updateVehicle();
+    updateLayout();
     updateMoon();
     updateRouteColors();
     updateLabels();
@@ -583,8 +778,12 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     frame = requestAnimationFrame(tick);
   };
 
-  // Start facing Stockholm without easing in from the far side.
-  updateVehicle();
+  // Start facing Stockholm without easing in from the far side, and already
+  // out on the globe if the journey is under way.
+  if (options.getProgress) syncToProgress(options.getProgress());
+  introTime = status.started ? 1 : 0;
+  updateIntro(0);
+  locateVehicle();
   updateCamera(0);
   yaw = targetYaw;
   pitch = targetPitch;
@@ -604,8 +803,9 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     dispose: (): void => {
       cancelAnimationFrame(frame);
       observer.disconnect();
-      for (const label of [...labels, hereLabel]) label.element.remove();
+      for (const label of [...labels, hereLabel, ...placeLabels, ...districtLabels]) label.element.remove();
       for (const item of disposables) item.dispose();
+      city.dispose();
       lod.dispose();
       renderer.dispose();
     },
@@ -618,16 +818,19 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
       setLeg(clamp(legIndex + delta, 0, LEGS.length - 1), 0);
       setStatus({ finished: false, started: true });
     },
+    // The view is locked on the city until the journey starts.
     toggleFollow: (): void => {
+      if (!status.started) return;
       idleTime = 0;
       setStatus({ follow: !status.follow });
     },
     setSpin: (x: number, y: number): void => {
-      spinX = x;
-      spinY = y;
-      if ((x !== 0 || y !== 0) && status.follow) setStatus({ follow: false });
+      spinX = status.started ? x : 0;
+      spinY = status.started ? y : 0;
+      if ((spinX !== 0 || spinY !== 0) && status.follow) setStatus({ follow: false });
     },
     zoom: (direction: number): void => {
+      if (!status.started) return;
       zoomLevel = clamp(zoomLevel + (direction > 0 ? -1 : 1), 0, EARTH_LEVEL_COUNT - 1);
       zoomFactor = ZOOM_STEP_RATIO ** (DEFAULT_EARTH_LEVEL - zoomLevel);
     }
