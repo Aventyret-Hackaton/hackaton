@@ -1,8 +1,14 @@
-# hackaton
+# Pointless travel planner
 
 > **Hackaton** — a Next.js app built on the [Äventyret rig](https://github.com/Aventyret/aventyret-rig).
 
-## About this project
+This is a travel planner that visualizes absurldy bad travel directions between to addresses in Stockholm, Sweden.
+
+The service will always choose a ridiculously long direction (globally). Not always the longest but always something very long.
+
+We want to rely heavily on 3d rendered UI (rendered with three.js). The directions should be visualized with a 3d renederd image of earth.
+
+## Codebase description
 
 Hackaton is a Next.js (App Router) frontend served as the `www` service through
 the rig. It is the starting base for the hackathon project — build on top of it
