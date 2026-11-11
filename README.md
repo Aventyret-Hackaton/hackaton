@@ -35,6 +35,9 @@ in `www/app`.
   destination.
 - The street view is a mocked voxel scene (`www/components/streetScene.ts`)
   that takes its terrain from the globe under the traveller.
+- The globe shows the same traveller as the street view: on foot on the street
+  legs in Stockholm, the vehicle of the leg in between, and nobody after
+  arrival.
 - **`/globe`** — standalone demo on its own clock, keyboard only
   (space, arrow keys, `+`/`-`, `N`/`B`, `F`, `R`, `C`).
 - **`/globe/assets`** — contact sheet of every voxel model.

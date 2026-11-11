@@ -124,6 +124,9 @@ const DEFAULT_PLACES: GlobePlaces = {
   destination: { name: 'Medborgarplatsen', position: [59.3143, 18.0735] }
 };
 
+// Who is on the way, and whether they move. The poses stand still when they do.
+export type GlobeTraveller = { modelId: VehicleId; moving: boolean };
+
 export type GlobeStatus = {
   running: boolean;
   started: boolean;
@@ -145,6 +148,8 @@ export type GlobeSceneOptions = {
   getProgress?: () => number;
   // Whether a trip on an outside clock has set off, even if it has not reached the globe yet.
   isUnderWay?: () => boolean;
+  // Who the globe shows travelling, or null for nobody. Without it the leg decides.
+  getTraveller?: () => GlobeTraveller | null;
   onLegChange: (index: number) => void;
   onStatusChange: (status: GlobeStatus) => void;
 };
@@ -494,6 +499,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
   const vehicleUnit = new Vector3();
   const vehicleHeading = new Vector3();
   const vehicleTop = new Vector3();
+  let traveller: GlobeTraveller | null = null;
 
   const setStatus = (patch: Partial<GlobeStatus>): void => {
     status = { ...status, ...patch };
@@ -544,26 +550,34 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     headingAt(legTrack, legProgress, vehicleHeading);
   };
 
+  // The leg decides who travels unless an outside clock does. Nobody is left once the journey is over.
+  const findTraveller = (): GlobeTraveller | null => {
+    if (options.getTraveller) return options.getTraveller();
+    return status.finished ? null : { modelId: LEGS[legIndex].modelId, moving: status.running };
+  };
+
   const updateVehicle = (delta: number): void => {
-    const activeId = LEGS[legIndex].modelId;
+    traveller = findTraveller();
+    // The traveller only appears once the houses are too small to stand among.
+    const size = traveller ? introScale * clamp((introEase - TRAVELLER_APPEARS[0]) / (TRAVELLER_APPEARS[1] - TRAVELLER_APPEARS[0]), 0, 1) : 0;
+    vehicleHolder.visible = size > 0;
+    if (!traveller) return;
+    const { modelId } = traveller;
     const position = scratch.d.copy(vehicleUnit).multiplyScalar(routeRadius);
     if (introShift < 1) position.lerpVectors(vehicleHome, position, introShift);
     const height = position.length();
     const up = position.divideScalar(height);
-    // The traveller only appears once the houses are too small to stand among.
-    const size = introScale * clamp((introEase - TRAVELLER_APPEARS[0]) / (TRAVELLER_APPEARS[1] - TRAVELLER_APPEARS[0]), 0, 1);
     surfaceMatrix(up, height, vehicleHeading, vehicleHolder.matrix).scale(scratch.a.setScalar(size));
-    vehicleHolder.visible = size > 0;
-    const { scale, motion } = VEHICLES[activeId];
-    vehicleTop.copy(up).multiplyScalar(height + ((vehicles.get(activeId)?.size.y ?? 0) * scale + 1.4) * introScale);
+    const { scale, motion } = VEHICLES[modelId];
+    vehicleTop.copy(up).multiplyScalar(height + ((vehicles.get(modelId)?.size.y ?? 0) * scale + 1.4) * introScale);
 
     // The poses only play for the traveller on show, and stand still when it does.
-    if (status.running && vehicleHolder.visible && !reducedMotion) travelled += delta;
+    if (traveller.moving && vehicleHolder.visible && !reducedMotion) travelled += delta;
     const pose = reducedMotion ? 0 : Math.floor(elapsed * POSES_PER_SECOND) / POSES_PER_SECOND;
-    const moving = status.running ? 1 : 0.35;
+    const moving = traveller.moving ? 1 : 0.35;
     vehicles.forEach((vehicle, id) => {
       const { mesh } = vehicle;
-      mesh.visible = id === activeId;
+      mesh.visible = id === modelId;
       if (!mesh.visible) return;
       vehicle.pose(travelled);
       mesh.rotation.x = motion === 'float' ? Math.sin(pose * 2.4) * 0.07 : 0;
@@ -710,7 +724,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
       positionLabel(label, onGlobe && label.closeness >= threshold, width, height);
     }
     // Before departure and after arrival the flags mark the spot instead.
-    positionLabel(hereLabel, onGlobe && status.started && !status.finished, width, height);
+    positionLabel(hereLabel, onGlobe && underWay() && traveller !== null, width, height);
     const inCity = 1 - clamp(introEase / CITY_LABELS_END, 0, 1);
     for (const label of [...placeLabels, ...districtLabels]) {
       positionCityLabel(label, inCity, width, height);
