@@ -5,6 +5,8 @@ import { TripProvider } from '@/components/TripContext';
 import './globals.css';
 
 export const metadata: Metadata = {
+  // Without a base the social image URLs point at localhost.
+  metadataBase: process.env.NEXT_PUBLIC_WWW_URL ? new URL(process.env.NEXT_PUBLIC_WWW_URL) : undefined,
   title: 'Pointless Travel Planner',
   description: 'Pointless Travel Planner — built on the Äventyret rig.'
 };
