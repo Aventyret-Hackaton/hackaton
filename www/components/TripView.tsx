@@ -6,17 +6,18 @@ import { Vector3 } from 'three';
 
 import { pixelFont } from '@/components/globe/pixelFont';
 import { RouteCaption } from '@/components/globe/RouteCaption';
+import { isTypingTarget } from '@/components/globe/keyboard';
 import { SCANLINE_HINT, ScanlineOverlay } from '@/components/globe/ScanlineOverlay';
 import { TitleBar } from '@/components/globe/TitleBar';
 import { type DirectiveStep, LEG_STEPS, TravelDirective } from '@/components/globe/TravelDirective';
-import { VoxelGlobe } from '@/components/globe/VoxelGlobe';
+import { type KeyHint, VoxelGlobe } from '@/components/globe/VoxelGlobe';
 import { StreetView } from '@/components/StreetView';
 import { latLonToUnit } from '@/lib/globe/geo';
 import { ARRIVAL_DAY, JOURNEY_SECONDS, LEGS, locateJourney, STOCKHOLM } from '@/lib/globe/journey';
 import { JOURNEY_TRACKS, trackPoint } from '@/lib/globe/track';
 import type { Place } from '@/lib/places';
 import { estimateStreetLegs, type StreetLegs } from '@/lib/streetLegs';
-import { getGlobeProgress, getTimelineState, type Timeline, type TripPhase } from '@/lib/timeline';
+import { getGlobeProgress, getTimelineState, type Timeline, TRIP_SPEEDS, type TripPhase, withSpeed } from '@/lib/timeline';
 import { FLAGS_MODEL } from '@/lib/voxel/models';
 
 import type { Traveller } from './streetScene';
@@ -33,8 +34,6 @@ type TripData = {
   timeline: Timeline;
 };
 
-// Trip seconds per real second. The whole trip plays in real time.
-const TRIP_SPEED = 1;
 const STOCKHOLM_UNIT = latLonToUnit(STOCKHOLM);
 const ARRIVED_TEXT = 'Framme. Nu då?';
 const PHASE_TICK_MS = 200;
@@ -70,6 +69,8 @@ const getTraveller = (timeline: Timeline): Traveller => {
   return { modelId: LEGS[legIndex].modelId, unit: trackPoint(JOURNEY_TRACKS[legIndex], legProgress, new Vector3()), urban: false, moving: true };
 };
 
+const formatSpeed = (speed: number): string => (speed === 1 ? 'realtid' : `${speed}x`);
+
 const usePhase = (timeline: Timeline | null): TripPhase | null => {
   const [phase, setPhase] = useState<TripPhase | null>(null);
 
@@ -101,7 +102,8 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
           legs,
           timeline: {
             startTime: performance.now(),
-            speed: TRIP_SPEED,
+            elapsedSeconds: 0,
+            speed: TRIP_SPEEDS[0],
             outboundSeconds: legs.outbound.durationSeconds,
             globeSeconds: JOURNEY_SECONDS,
             inboundSeconds: legs.inbound.durationSeconds
@@ -113,6 +115,27 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
     return (): void => controller.abort();
   }, [origin, destination]);
 
+  // S steps the speed up one notch, and back to real time after the fastest.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const modified = event.metaKey || event.ctrlKey || event.altKey;
+      if (modified || event.repeat || isTypingTarget(event.target) || event.key.toLowerCase() !== 's') {
+        return;
+      }
+      const now = performance.now();
+      setTrip((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        const next = TRIP_SPEEDS[(TRIP_SPEEDS.findIndex((speed) => speed === previous.timeline.speed) + 1) % TRIP_SPEEDS.length];
+        return { ...previous, timeline: withSpeed(previous.timeline, next, now) };
+      });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return (): void => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  const hints: readonly KeyHint[] = [['S', `snabbare · nu ${formatSpeed(trip?.timeline.speed ?? TRIP_SPEEDS[0])}`], ...SCANLINE_HINT];
   const stepByPhase: Record<TripPhase, number | null> = {
     outbound: 0,
     globe: 1 + legIndex,
@@ -136,7 +159,7 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
         {trip ? (
           <VoxelGlobe
             className={styles.globe}
-            extraHints={SCANLINE_HINT}
+            extraHints={hints}
             onLegChange={setLegIndex}
             getProgress={(): number => getGlobeProgress(getTimelineState(trip.timeline, performance.now()))}
           />

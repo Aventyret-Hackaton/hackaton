@@ -26,7 +26,8 @@ in `www/app`.
 - **`/trip`** uses the voxel interface for the whole view: title bar, travel
   directive, globe and the "Här är du" panel with the street view. The globe,
   the directive and the street view follow the shared timeline in
-  `www/lib/timeline.ts`, which plays the whole trip in real time.
+  `www/lib/timeline.ts`, which plays the whole trip in real time. `S` steps the speed
+  up through 100x to 10000000x and back to real time.
 - The street view is a mocked voxel scene (`www/components/streetScene.ts`)
   that takes its terrain from the globe under the traveller.
 - **`/globe`** — standalone demo on its own clock, keyboard only
