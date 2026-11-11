@@ -3,12 +3,12 @@ import { BufferAttribute, BufferGeometry, Color } from 'three';
 import type { VoxelCell } from './grid';
 import { hash3 } from './hash';
 
-type Triple = readonly [number, number, number];
+export type Triple = readonly [number, number, number];
 
-type Face = { normal: Triple; corners: readonly Triple[] };
+export type Face = { normal: Triple; corners: readonly Triple[] };
 
 // Corners are counter-clockwise seen from outside the voxel.
-const FACES: readonly Face[] = [
+export const VOXEL_FACES: readonly Face[] = [
   {
     normal: [1, 0, 0],
     corners: [
@@ -76,7 +76,7 @@ export const buildVoxelGeometry = (cells: readonly VoxelCell[], isSolid: (x: num
   for (const cell of cells) {
     const shade = 1 + (hash3(cell.x, cell.y, cell.z) - 0.5) * jitter;
     color.setHex(cell.color);
-    for (const face of FACES) {
+    for (const face of VOXEL_FACES) {
       const [nx, ny, nz] = face.normal;
       if (isSolid(cell.x + nx, cell.y + ny, cell.z + nz)) continue;
       const base = positions.length / 3;
