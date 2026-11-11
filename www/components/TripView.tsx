@@ -11,7 +11,7 @@ import { isTypingTarget } from '@/components/globe/keyboard';
 import { SCANLINE_HINT, ScanlineOverlay } from '@/components/globe/ScanlineOverlay';
 import { TitleBar } from '@/components/globe/TitleBar';
 import { type DirectiveStep, LEG_STEPS, TravelDirective } from '@/components/globe/TravelDirective';
-import type { GlobePlace } from '@/components/globe/scene';
+import type { GlobePlace, GlobeTraveller } from '@/components/globe/scene';
 import { type KeyHint, VoxelGlobe } from '@/components/globe/VoxelGlobe';
 import { StreetView } from '@/components/StreetView';
 import { latLonToUnit } from '@/lib/globe/geo';
@@ -89,6 +89,15 @@ const getTraveller = (timeline: Timeline, aheadSeconds: number): Traveller => {
   const from = trackPoint(track, legProgress - HEADING_SPAN, new Vector3());
   const heading = trackPoint(track, legProgress + HEADING_SPAN, new Vector3()).sub(from);
   return { modelId: LEGS[legIndex].modelId, unit: trackPoint(track, legProgress, from), heading, urban: false, moving: true };
+};
+
+// The globe shows the same traveller as the street view, and nobody once the trip is over.
+const getGlobeTraveller = (timeline: Timeline): GlobeTraveller | null => {
+  if (getTimelineState(timeline, performance.now()).phase === 'arrived') {
+    return null;
+  }
+  const { modelId, moving } = getTraveller(timeline, 0);
+  return { modelId, moving };
 };
 
 // The flag on the globe is named after the first part of the address.
@@ -182,6 +191,8 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
   const step = currentStep === null ? undefined : steps[currentStep];
   const nextStep = currentStep === null ? undefined : steps[currentStep + 1];
   const idleText = phase === 'arrived' ? ARRIVED_TEXT : 'Väntar på avfärd';
+  // On the street legs in Stockholm the globe has no leg of its own to name.
+  const globeCaption = step && phase !== 'globe' ? `Nu: ${step.mode}` : undefined;
 
   return (
     <div className={`${pixelFont.variable} ${styles.root}`}>
@@ -199,6 +210,8 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
             onLegChange={setLegIndex}
             places={places}
             underWay={started}
+            getTraveller={(): GlobeTraveller | null => getGlobeTraveller(trip.timeline)}
+            caption={globeCaption}
             getProgress={(): number => getGlobeProgress(getTimelineState(trip.timeline, performance.now()))}
           />
         ) : (

@@ -7,7 +7,7 @@ import { ARRIVAL_DAY, LEGS } from '@/lib/globe/journey';
 import { isTypingTarget } from './keyboard';
 import { pixelFont } from './pixelFont';
 import { createGlobeScene } from './scene';
-import type { GlobePlaces, GlobeSceneHandle, GlobeStatus } from './scene';
+import type { GlobePlaces, GlobeSceneHandle, GlobeStatus, GlobeTraveller } from './scene';
 import styles from './VoxelGlobe.module.css';
 
 export type KeyHint = readonly [keys: string, action: string];
@@ -21,6 +21,10 @@ type VoxelGlobeProps = {
   places?: GlobePlaces;
   // Whether a trip on an outside clock has set off. The globe leaves the close-up when it has.
   underWay?: boolean;
+  // Who the globe shows travelling, or null for nobody. Without it the leg decides.
+  getTraveller?: () => GlobeTraveller | null;
+  // Replaces the line under the globe that says what is going on.
+  caption?: string;
   extraHints?: readonly KeyHint[];
   className?: string;
 };
@@ -51,20 +55,31 @@ const INITIAL_STATUS: GlobeStatus = {
   follow: true
 };
 
-export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, places, underWay = true, extraHints = [], className }: VoxelGlobeProps): React.JSX.Element => {
+export const VoxelGlobe = ({
+  getProgress,
+  onLegChange,
+  onStatusChange,
+  places,
+  underWay = true,
+  getTraveller,
+  caption,
+  extraHints = [],
+  className
+}: VoxelGlobeProps): React.JSX.Element => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const labelLayerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<GlobeSceneHandle | null>(null);
-  const callbacksRef = useRef({ getProgress, onLegChange, onStatusChange, underWay });
+  const callbacksRef = useRef({ getProgress, onLegChange, onStatusChange, underWay, getTraveller });
   const placesRef = useRef(places);
   // The scene is rebuilt when the addresses change, not when the object does.
   const placesKey = JSON.stringify(places ?? null);
   const [legIndex, setLegIndex] = useState(0);
   const [status, setStatus] = useState<GlobeStatus>(INITIAL_STATUS);
   const driven = getProgress !== undefined;
+  const hasTraveller = getTraveller !== undefined;
 
   useEffect(() => {
-    callbacksRef.current = { getProgress, onLegChange, onStatusChange, underWay };
+    callbacksRef.current = { getProgress, onLegChange, onStatusChange, underWay, getTraveller };
     placesRef.current = places;
   });
 
@@ -86,6 +101,7 @@ export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, places, u
       reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
       getProgress: driven ? (): number => callbacksRef.current.getProgress?.() ?? 0 : undefined,
       isUnderWay: driven ? (): boolean => callbacksRef.current.underWay : undefined,
+      getTraveller: hasTraveller ? (): GlobeTraveller | null => callbacksRef.current.getTraveller?.() ?? null : undefined,
       onLegChange: (index): void => {
         setLegIndex(index);
         callbacksRef.current.onLegChange?.(index);
@@ -100,7 +116,7 @@ export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, places, u
       sceneRef.current = null;
       scene.dispose();
     };
-  }, [driven, placesKey]);
+  }, [driven, hasTraveller, placesKey]);
 
   useEffect(() => {
     const pressed = new Set<string>();
@@ -176,7 +192,7 @@ export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, places, u
 
   const leg = LEGS[legIndex];
   const waitingText = driven && underWay ? 'Tillfälligt stillastående.' : 'Tryck på mellanslag för att ge dig av.';
-  const statusText = status.finished ? `Dag ${ARRIVAL_DAY}. Framme. Nu då?` : status.started ? `Nu: ${leg.mode} · ${leg.from} → ${leg.to}` : waitingText;
+  const statusText = caption ?? (status.finished ? `Dag ${ARRIVAL_DAY}. Framme. Nu då?` : status.started ? `Nu: ${leg.mode} · ${leg.from} → ${leg.to}` : waitingText);
   const hints = [...(driven ? [] : JOURNEY_HINTS), ...VIEW_HINTS, ...extraHints];
 
   return (
