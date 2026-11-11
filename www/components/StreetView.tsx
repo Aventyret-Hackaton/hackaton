@@ -74,10 +74,15 @@ export const StreetView = ({ legs, timeline }: StreetViewProps): React.JSX.Eleme
   }
 
   const isOutbound = view.phase === 'outbound';
-  const frames = (isOutbound ? legs?.outbound.frames : legs?.inbound.frames) ?? [];
+  const leg = isOutbound ? legs?.outbound : legs?.inbound;
+  const frames = leg?.frames ?? [];
+  const frameSeconds = leg && frames.length > 0 ? leg.durationSeconds / frames.length : 0;
   const urls = frames.map(getFrameUrl);
   // Fall back to the latest frame that has imagery.
   const visibleIndex = urls.findLastIndex((url, index) => index <= view.frameIndex && !failedUrls.has(url));
+
+  // The previous frame stays mounted underneath while the new one fades in.
+  const previousIndex = urls.findLastIndex((url, index) => index < visibleIndex && !failedUrls.has(url));
 
   const handleError = (url: string): void => {
     setFailedUrls((previous) => new Set(previous).add(url));
@@ -86,13 +91,24 @@ export const StreetView = ({ legs, timeline }: StreetViewProps): React.JSX.Eleme
   return (
     <div>
       <div className={styles.viewport}>
-        {urls.map((url, index) =>
-          // Only the visible frame and the next few are mounted, which preloads them.
-          index >= Math.max(visibleIndex, 0) && index <= view.frameIndex + PRELOAD_FRAMES ? (
+        {urls.map((url, index) => {
+          const isShown = index === visibleIndex || index === previousIndex;
+          const isPreloading = index > visibleIndex && index <= view.frameIndex + PRELOAD_FRAMES;
+          if (!isShown && !isPreloading) {
+            return null;
+          }
+          return (
             // eslint-disable-next-line @next/next/no-img-element
-            <img key={index} className={styles.frame} src={url} alt="" hidden={index !== visibleIndex} onError={() => handleError(url)} />
-          ) : null
-        )}
+            <img
+              key={index}
+              className={`${styles.frame} ${isShown ? styles.zooming : ''} ${index === visibleIndex ? styles.visible : ''}`}
+              style={{ '--frame-seconds': `${frameSeconds}s` } as React.CSSProperties}
+              src={url}
+              alt=""
+              onError={() => handleError(url)}
+            />
+          );
+        })}
         {visibleIndex === -1 && <p className={styles.message}>{legs ? 'Gatuvyn kom inte fram.' : 'Gatuvyn kom inte fram. Försök igen.'}</p>}
         <Avatar />
       </div>
