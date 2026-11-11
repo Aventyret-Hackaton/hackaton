@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 
+import { ArrivalConfetti } from './ArrivalConfetti';
 import styles from './GlobeView.module.css';
 import { pixelFont } from './pixelFont';
 import { RouteCaption } from './RouteCaption';
@@ -24,6 +25,7 @@ export const GlobeView = (): React.JSX.Element => {
         <VoxelGlobe className={styles.globe} extraHints={SCANLINE_HINT} onLegChange={setLegIndex} onStatusChange={(status: GlobeStatus): void => setFinished(status.finished)} />
         <RouteCaption />
       </section>
+      <ArrivalConfetti active={finished} />
       <ScanlineOverlay />
     </main>
   );

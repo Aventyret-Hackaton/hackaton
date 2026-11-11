@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Vector3 } from 'three';
 
+import { ArrivalConfetti } from '@/components/globe/ArrivalConfetti';
 import { pixelFont } from '@/components/globe/pixelFont';
 import { RouteCaption } from '@/components/globe/RouteCaption';
 import { isTypingTarget } from '@/components/globe/keyboard';
@@ -196,6 +197,7 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
         </button>
       </section>
 
+      <ArrivalConfetti active={phase === 'arrived'} />
       <ScanlineOverlay />
     </div>
   );
