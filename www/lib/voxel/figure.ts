@@ -75,47 +75,83 @@ export type BigFigureOptions = FigureLook & {
   socks?: number;
   glove?: number;
   shades?: boolean;
+  // Step of the walk, below WALK_STEPS. In step 0 the right foot reaches forward.
+  step?: number;
+  // The foot that swings forward stays on its toes, and the body never rises.
+  glide?: boolean;
 };
 
-// Standalone walker, eighteen voxels tall, centred on the origin mid-stride.
+export const WALK_STEPS = 8;
+
+// One leg through the walk: how far ahead of the hip the knee and the foot are, and how high the foot is.
+const WALK_LEG: readonly (readonly [knee: number, foot: number, lift: number])[] = [
+  [1, 2, 0],
+  [1, 1, 0],
+  [0, 0, 0],
+  [0, -1, 0],
+  [-1, -2, 0],
+  [0, -2, 1],
+  [1, 0, 2],
+  [1, 2, 1]
+];
+// The right arm swings against the right leg: behind, hanging or ahead.
+const WALK_ARM = [-1, -1, 0, 1, 1, 1, 0, -1];
+// The body rides a voxel higher while a leg stands straight under it.
+const WALK_RISE = [0, 0, 1, 1, 0, 0, 1, 1];
+
+export const walkRise = (step: number): number => WALK_RISE[step % WALK_STEPS];
+
+// Where the left hand is in a step: behind, beside or ahead of the body.
+export const walkLeftSwing = (step: number): number => WALK_ARM[(step + WALK_STEPS / 2) % WALK_STEPS];
+
+// Standalone walker, eighteen voxels tall, centred on the origin.
 export const paintBigFigure = (g: VoxelGrid, options: BigFigureOptions): void => {
   const f = options.facing ?? 1;
+  const step = options.step ?? 0;
+  const rise = options.glide ? 0 : walkRise(step);
   const box = (dx0: number, dx1: number, y0: number, y1: number, z0: number, z1: number, color: number): void => g.fill(dx0 * f, dx1 * f, y0, y1, z0, z1, color);
+  const body = (dx0: number, dx1: number, y0: number, y1: number, z0: number, z1: number, color: number): void => box(dx0, dx1, y0 + rise, y1 + rise, z0, z1, color);
   const lowerLeg = options.socks ?? options.bottom;
 
-  box(-1, 0, 5, 6, -2, -1, options.bottom);
-  box(0, 1, 3, 4, -2, -1, options.bottom);
-  box(1, 2, 1, 2, -2, -1, lowerLeg);
-  box(1, 3, 0, 0, -2, -1, options.shoes);
+  const paintLeg = (z0: number, z1: number, phase: number): void => {
+    const [knee, foot, lift] = WALK_LEG[phase % WALK_STEPS];
+    const onToes = lift > 0 && options.glide === true;
+    const height = onToes ? 1 : lift;
+    const hang = lift > 0 ? rise : 0;
+    box(-1, 0, 5, 6 + rise, z0, z1, options.bottom);
+    box(knee - 1, knee, 3 + hang, 4 + hang, z0, z1, options.bottom);
+    box(foot - 1, foot, height + 1, height + 2, z0, z1, lowerLeg);
+    box(foot - 1, onToes ? foot : foot + 1, height, height, z0, z1, options.shoes);
+    if (onToes) box(foot + 1, foot + 1, 0, 0, z0, z1, options.shoes);
+  };
+  paintLeg(-2, -1, step);
+  paintLeg(1, 2, step + WALK_STEPS / 2);
 
-  box(-1, 0, 5, 6, 1, 2, options.bottom);
-  box(-2, -1, 3, 4, 1, 2, options.bottom);
-  box(-3, -2, 1, 2, 1, 2, lowerLeg);
-  box(-4, -2, 0, 0, 1, 2, options.shoes);
+  body(-1, 1, 8, 12, -2, 2, options.top);
+  body(-1, 1, 7, 7, -2, 2, options.bottom);
 
-  box(-1, 1, 8, 12, -2, 2, options.top);
-  box(-1, 1, 7, 7, -2, 2, options.bottom);
+  const paintArm = (z: number, phase: number, hand: number): void => {
+    const swing = WALK_ARM[phase % WALK_STEPS];
+    const reach = Math.max(swing, 0);
+    body(-1, 0, 10, 12, z, z, options.top);
+    body(swing - 1, swing, 8, 9, z, z, options.top);
+    body(swing - 1 + reach, swing + reach, 7, 7, z, z, hand);
+  };
+  paintArm(-3, step, options.skin);
+  paintArm(3, step + WALK_STEPS / 2, options.glove ?? options.skin);
 
-  box(-1, 0, 10, 12, -3, -3, options.top);
-  box(-2, -1, 8, 9, -3, -3, options.top);
-  box(-2, -1, 7, 7, -3, -3, options.skin);
-
-  box(-1, 0, 10, 12, 3, 3, options.top);
-  box(0, 1, 8, 9, 3, 3, options.top);
-  box(1, 2, 7, 7, 3, 3, options.glove ?? options.skin);
-
-  box(-2, 2, 13, 17, -2, 2, options.skin);
-  box(-2, 2, 17, 17, -2, 2, options.hair);
-  box(-2, -2, 14, 17, -2, 2, options.hair);
-  box(-2, 0, 16, 16, -2, -2, options.hair);
-  box(-2, 0, 16, 16, 2, 2, options.hair);
+  body(-2, 2, 13, 17, -2, 2, options.skin);
+  body(-2, 2, 17, 17, -2, 2, options.hair);
+  body(-2, -2, 14, 17, -2, 2, options.hair);
+  body(-2, 0, 16, 16, -2, -2, options.hair);
+  body(-2, 0, 16, 16, 2, 2, options.hair);
 
   if (options.shades) {
-    box(2, 2, 15, 15, -2, 2, P.black);
+    body(2, 2, 15, 15, -2, 2, P.black);
   } else {
-    box(2, 2, 15, 15, -1, -1, P.black);
-    box(2, 2, 15, 15, 1, 1, P.black);
+    body(2, 2, 15, 15, -1, -1, P.black);
+    body(2, 2, 15, 15, 1, 1, P.black);
   }
-  box(2, 2, 13, 13, -1, 0, P.mouth);
-  box(3, 3, 14, 14, 0, 0, options.skin);
+  body(2, 2, 13, 13, -1, 0, P.mouth);
+  body(3, 3, 14, 14, 0, 0, options.skin);
 };

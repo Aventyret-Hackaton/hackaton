@@ -30,17 +30,69 @@ const paintScooter = (g: VoxelGrid): void => {
   });
 };
 
-const paintMower = (g: VoxelGrid): void => {
+const MOWER_FRAMES = 8;
+// A mark on a wheel goes over the top and down the front, a quarter turn at a time.
+const QUARTER_TURNS: readonly (readonly [x: number, y: number])[] = [
+  [0, 1],
+  [1, 1],
+  [1, 0],
+  [0, 0]
+];
+// Clippings fly out under the collector in an arc: how far back and how high, step by step.
+const CLIPPING_ARC: readonly (readonly [back: number, y: number])[] = [
+  [4, 1],
+  [5, 2],
+  [6, 2],
+  [7, 1],
+  [8, 0]
+];
+const CLIPPINGS: readonly (readonly [z: number, delay: number])[] = [
+  [2, 0],
+  [4, 3],
+  [5, 6],
+  [3, 1],
+  [1, 4],
+  [4, 7]
+];
+// A puff from the exhaust drifts up and back before the next one.
+const EXHAUST: readonly (readonly (readonly [x: number, y: number, z: number])[])[] = [
+  [[11, 8, 5]],
+  [[10, 9, 5]],
+  [
+    [9, 10, 5],
+    [10, 10, 4]
+  ],
+  [[8, 11, 4]]
+];
+
+const paintMower = (g: VoxelGrid, frame: number): void => {
+  // The small front wheels turn twice for every turn of the rear wheels.
+  const [rearX, rearY] = QUARTER_TURNS[Math.floor(frame / 2) % 4];
+  const [frontX, frontY] = QUARTER_TURNS[frame % 4];
+  const treadAcross = Math.floor(frame / 2) % 2 === 1;
+
   for (const z of [-2, 7]) {
     g.fill(0, 3, 0, 3, z, z + 1, P.black);
     g.clear(0, 0, 0, 0, z, z + 1);
     g.clear(3, 3, 0, 0, z, z + 1);
     g.clear(0, 0, 3, 3, z, z + 1);
     g.clear(3, 3, 3, 3, z, z + 1);
+    if (treadAcross) {
+      g.fill(0, 0, 1, 2, z, z + 1, P.steel);
+      g.fill(3, 3, 1, 2, z, z + 1, P.steel);
+    } else {
+      g.fill(1, 2, 0, 0, z, z + 1, P.steel);
+      g.fill(1, 2, 3, 3, z, z + 1, P.steel);
+    }
   }
-  g.fill(1, 2, 1, 2, -2, -2, P.yellow);
-  g.fill(1, 2, 1, 2, 8, 8, P.yellow);
-  for (const z of [-1, 7]) g.fill(10, 11, 0, 1, z, z, P.black);
+  for (const z of [-2, 8]) {
+    g.fill(1, 2, 1, 2, z, z, P.yellow);
+    g.set(1 + rearX, 1 + rearY, z, P.orange);
+  }
+  for (const z of [-1, 7]) {
+    g.fill(10, 11, 0, 1, z, z, P.black);
+    g.set(10 + frontX, frontY, z, P.steel);
+  }
 
   g.fill(1, 12, 2, 3, 0, 6, P.red);
   g.fill(7, 12, 4, 5, 0, 6, P.red);
@@ -56,10 +108,13 @@ const paintMower = (g: VoxelGrid): void => {
 
   g.fill(-3, 0, 3, 6, 0, 6, P.darkGreen);
   g.fill(-3, 0, 7, 7, 1, 5, P.darkGreen);
-  g.set(-5, 0, 2, P.green);
-  g.set(-6, 1, 4, P.green);
-  g.set(-4, 0, 5, P.green);
-  g.set(-7, 0, 3, P.green);
+  CLIPPINGS.forEach(([z, delay], index) => {
+    const step = CLIPPING_ARC[(frame + delay) % MOWER_FRAMES];
+    if (step) g.set(-step[0], step[1], z, index % 2 === 0 ? P.green : P.darkGreen);
+  });
+
+  g.fill(11, 11, 6, 7, 5, 5, P.steel);
+  for (const [x, y, z] of EXHAUST[frame % EXHAUST.length]) g.set(x, y, z, P.shade);
 
   paintMiniFigure(g, 3, 5, 3, {
     skin: P.skinLight,
@@ -105,6 +160,11 @@ const paintBus = (g: VoxelGrid): void => {
 
 export const WHEEL_MODELS = {
   scooter: { id: 'scooter', label: 'Elsparkcykel', paint: paintScooter },
-  mower: { id: 'mower', label: 'Åkgräsklippare', paint: paintMower },
+  mower: {
+    id: 'mower',
+    label: 'Åkgräsklippare',
+    paint: (g): void => paintMower(g, 0),
+    sequence: { frames: MOWER_FRAMES, framesPerSecond: 10, paint: paintMower }
+  },
   bus: { id: 'bus', label: 'Ersättningsbuss 43X', paint: paintBus }
 } satisfies Record<string, VoxelModelDef>;

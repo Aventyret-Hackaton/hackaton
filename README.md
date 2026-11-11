@@ -47,6 +47,10 @@ in `www/app`.
   which has a cut-out where they lie. The city is a hand-drawn voxel map in
   `www/lib/city`, the land around it comes from `region.ts` there, and
   `cityIntro.ts` in `www/components/globe` lets them into the globe.
+- The walker, the swimmer, the raft, the ride-on mower and the moonwalker have
+  a loop of poses each (`sequence` on the model). `www/lib/voxel/posed.ts`
+  plays it on the globe and in the street view while the traveller moves. The
+  thumbnails and `/globe/assets` show the still pose.
 - **Code:** scene and components in `www/components/globe`, voxel engine and
   models in `www/lib/voxel`, route and sights in `www/lib/globe/journey.ts`.
 - `www/components/TripGlobe.tsx` is no longer used.
