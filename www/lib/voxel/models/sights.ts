@@ -1,7 +1,7 @@
-import { drawText } from "../font";
-import type { VoxelGrid } from "../grid";
-import type { VoxelModelDef } from "../model";
-import { P } from "../palette";
+import { drawText } from '../font';
+import type { VoxelGrid } from '../grid';
+import type { VoxelModelDef } from '../model';
+import { P } from '../palette';
 
 // Sights face +z, so the front is visible when north is up on the globe.
 
@@ -104,7 +104,7 @@ const paintGarage = (g: VoxelGrid): void => {
   g.fill(5, 6, 5, 5, 1, 2, P.mint);
   g.fill(5, 6, 1, 1, 3, 4, P.yellow);
   g.fill(2, 6, 7, 13, 5, 5, P.blue);
-  drawText("P", (column, row) => g.set(3 + column, 12 - row, 5, P.white));
+  drawText('P', (column, row) => g.set(3 + column, 12 - row, 5, P.white));
 };
 
 const paintSignpost = (g: VoxelGrid): void => {
@@ -154,7 +154,7 @@ const paintRoadwork = (g: VoxelGrid): void => {
   for (const [x, z] of [
     [0, 4],
     [3, 5],
-    [8, 4],
+    [8, 4]
   ] as const) {
     g.set(x, 1, z, P.orange);
     g.set(x, 2, z, P.white);
@@ -178,29 +178,29 @@ const paintFlags = (g: VoxelGrid): void => {
     g.clear(-8, -8, y, y, 0, 0);
     g.clear(8, 8, y, y, 0, 0);
   }
-  drawText("A", (column, row) => g.set(-6 + column, 21 - row, 0, P.navy));
-  drawText("B", (column, row) => g.set(4 + column, 21 - row, 0, P.navy));
+  drawText('A', (column, row) => g.set(-6 + column, 21 - row, 0, P.navy));
+  drawText('B', (column, row) => g.set(4 + column, 21 - row, 0, P.navy));
 };
 
 export const SIGHT_MODELS = {
-  kiosk: { id: "kiosk", label: "Kiosk", paint: paintKiosk },
-  restStop: { id: "restStop", label: "Rastplats", paint: paintRestStop },
-  charger: { id: "charger", label: "Laddstolpe", paint: paintCharger },
-  roundabout: { id: "roundabout", label: "Rondell", paint: paintRoundabout },
-  dune: { id: "dune", label: "Sanddyn", paint: paintDune },
-  office: { id: "office", label: "Turistkontor", paint: paintOffice },
-  buoy: { id: "buoy", label: "Boj", paint: paintBuoy },
-  wave: { id: "wave", label: "Våg", paint: paintWave },
-  garage: { id: "garage", label: "Parkeringshus", paint: paintGarage },
-  signpost: { id: "signpost", label: "Skylt", paint: paintSignpost },
-  gate: { id: "gate", label: "Terminalgrind", paint: paintGate },
-  queue: { id: "queue", label: "Fartygskö", paint: paintQueue },
-  shelter: { id: "shelter", label: "Busskur", paint: paintShelter },
-  roadwork: { id: "roadwork", label: "Vägarbete", paint: paintRoadwork },
+  kiosk: { id: 'kiosk', label: 'Kiosk', paint: paintKiosk },
+  restStop: { id: 'restStop', label: 'Rastplats', paint: paintRestStop },
+  charger: { id: 'charger', label: 'Laddstolpe', paint: paintCharger },
+  roundabout: { id: 'roundabout', label: 'Rondell', paint: paintRoundabout },
+  dune: { id: 'dune', label: 'Sanddyn', paint: paintDune },
+  office: { id: 'office', label: 'Turistkontor', paint: paintOffice },
+  buoy: { id: 'buoy', label: 'Boj', paint: paintBuoy },
+  wave: { id: 'wave', label: 'Våg', paint: paintWave },
+  garage: { id: 'garage', label: 'Parkeringshus', paint: paintGarage },
+  signpost: { id: 'signpost', label: 'Skylt', paint: paintSignpost },
+  gate: { id: 'gate', label: 'Terminalgrind', paint: paintGate },
+  queue: { id: 'queue', label: 'Fartygskö', paint: paintQueue },
+  shelter: { id: 'shelter', label: 'Busskur', paint: paintShelter },
+  roadwork: { id: 'roadwork', label: 'Vägarbete', paint: paintRoadwork }
 } satisfies Record<string, VoxelModelDef>;
 
 export const FLAGS_MODEL: VoxelModelDef = {
-  id: "flags",
-  label: "Start- och målflagga",
-  paint: paintFlags,
+  id: 'flags',
+  label: 'Start- och målflagga',
+  paint: paintFlags
 };

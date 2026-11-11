@@ -1,9 +1,9 @@
-import { Vector3 } from "three";
-import type { BufferGeometry } from "three";
+import { Vector3 } from 'three';
+import type { BufferGeometry } from 'three';
 
-import { createVoxelGrid } from "./grid";
-import type { VoxelGrid } from "./grid";
-import { buildVoxelGeometry } from "./mesher";
+import { createVoxelGrid } from './grid';
+import type { VoxelGrid } from './grid';
+import { buildVoxelGeometry } from './mesher';
 
 const MODEL_JITTER = 0.09;
 
@@ -24,11 +24,7 @@ export const buildModel = (def: VoxelModelDef): BuiltModel => {
   const box = geometry.boundingBox;
   if (!box) throw new Error(`Voxel model "${def.id}" is empty`);
   const size = box.getSize(new Vector3());
-  geometry.translate(
-    -(box.min.x + box.max.x) / 2,
-    -box.min.y,
-    -(box.min.z + box.max.z) / 2,
-  );
+  geometry.translate(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2);
   geometry.computeBoundingSphere();
   return { geometry, size };
 };

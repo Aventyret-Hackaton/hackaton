@@ -42,5 +42,5 @@ export const P = {
   hairBlond: 0xd9a441,
   hairRed: 0x9a4a1f,
   hairGrey: 0xb9bcc4,
-  mouth: 0x8a2f2a,
+  mouth: 0x8a2f2a
 } as const;

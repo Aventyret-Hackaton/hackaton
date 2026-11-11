@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react';
 
+import { VoxelGlobe } from '@/components/globe/VoxelGlobe';
 import { StreetView } from '@/components/StreetView';
-import { TripGlobe } from '@/components/TripGlobe';
 import type { Place } from '@/lib/places';
 import type { StreetLegs } from '@/lib/streetRoute';
-import type { Timeline } from '@/lib/timeline';
+import { getGlobeProgress, getTimelineState, type Timeline } from '@/lib/timeline';
 
 import styles from './TripView.module.css';
 
@@ -78,7 +78,11 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
       </section>
 
       <section className={styles.panel}>
-        {trip ? <TripGlobe origin={origin} destination={destination} timeline={trip.timeline} className={styles.globe} /> : <p>Alla har en teori. Ingen är framme.</p>}
+        {trip ? (
+          <VoxelGlobe getProgress={(): number => getGlobeProgress(getTimelineState(trip.timeline, performance.now()))} className={styles.globe} />
+        ) : (
+          <p>Alla har en teori. Ingen är framme.</p>
+        )}
         <h2>En liten omväg</h2>
       </section>
 

@@ -1,8 +1,8 @@
-import { paintMiniFigure } from "../figure";
-import { drawText } from "../font";
-import type { VoxelGrid } from "../grid";
-import type { VoxelModelDef } from "../model";
-import { P } from "../palette";
+import { paintMiniFigure } from '../figure';
+import { drawText } from '../font';
+import type { VoxelGrid } from '../grid';
+import type { VoxelModelDef } from '../model';
+import { P } from '../palette';
 
 const paintScooter = (g: VoxelGrid): void => {
   g.fill(0, 1, 0, 1, 1, 1, P.black);
@@ -25,8 +25,8 @@ const paintScooter = (g: VoxelGrid): void => {
     top: P.coral,
     bottom: P.dark,
     shoes: P.white,
-    arms: "forward",
-    hat: P.yellow,
+    arms: 'forward',
+    hat: P.yellow
   });
 };
 
@@ -68,8 +68,8 @@ const paintMower = (g: VoxelGrid): void => {
     bottom: P.khaki,
     shoes: P.dark,
     seated: true,
-    arms: "forward",
-    hat: P.coral,
+    arms: 'forward',
+    hat: P.coral
   });
 };
 
@@ -100,11 +100,11 @@ const paintBus = (g: VoxelGrid): void => {
   g.set(25, 9, -1, P.dark);
   g.set(25, 9, 9, P.dark);
 
-  drawText("43X", (column, row) => g.set(7 + column, 13, 2 + row, P.navy));
+  drawText('43X', (column, row) => g.set(7 + column, 13, 2 + row, P.navy));
 };
 
 export const WHEEL_MODELS = {
-  scooter: { id: "scooter", label: "Elsparkcykel", paint: paintScooter },
-  mower: { id: "mower", label: "Åkgräsklippare", paint: paintMower },
-  bus: { id: "bus", label: "Ersättningsbuss 43X", paint: paintBus },
+  scooter: { id: 'scooter', label: 'Elsparkcykel', paint: paintScooter },
+  mower: { id: 'mower', label: 'Åkgräsklippare', paint: paintMower },
+  bus: { id: 'bus', label: 'Ersättningsbuss 43X', paint: paintBus }
 } satisfies Record<string, VoxelModelDef>;

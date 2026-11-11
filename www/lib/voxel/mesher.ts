@@ -1,7 +1,7 @@
-import { BufferAttribute, BufferGeometry, Color } from "three";
+import { BufferAttribute, BufferGeometry, Color } from 'three';
 
-import type { VoxelCell } from "./grid";
-import { hash3 } from "./hash";
+import type { VoxelCell } from './grid';
+import { hash3 } from './hash';
 
 type Triple = readonly [number, number, number];
 
@@ -15,8 +15,8 @@ const FACES: readonly Face[] = [
       [1, 0, 0],
       [1, 1, 0],
       [1, 1, 1],
-      [1, 0, 1],
-    ],
+      [1, 0, 1]
+    ]
   },
   {
     normal: [-1, 0, 0],
@@ -24,8 +24,8 @@ const FACES: readonly Face[] = [
       [0, 0, 0],
       [0, 0, 1],
       [0, 1, 1],
-      [0, 1, 0],
-    ],
+      [0, 1, 0]
+    ]
   },
   {
     normal: [0, 1, 0],
@@ -33,8 +33,8 @@ const FACES: readonly Face[] = [
       [0, 1, 0],
       [0, 1, 1],
       [1, 1, 1],
-      [1, 1, 0],
-    ],
+      [1, 1, 0]
+    ]
   },
   {
     normal: [0, -1, 0],
@@ -42,8 +42,8 @@ const FACES: readonly Face[] = [
       [0, 0, 0],
       [1, 0, 0],
       [1, 0, 1],
-      [0, 0, 1],
-    ],
+      [0, 0, 1]
+    ]
   },
   {
     normal: [0, 0, 1],
@@ -51,8 +51,8 @@ const FACES: readonly Face[] = [
       [0, 0, 1],
       [1, 0, 1],
       [1, 1, 1],
-      [0, 1, 1],
-    ],
+      [0, 1, 1]
+    ]
   },
   {
     normal: [0, 0, -1],
@@ -60,17 +60,13 @@ const FACES: readonly Face[] = [
       [0, 0, 0],
       [0, 1, 0],
       [1, 1, 0],
-      [1, 0, 0],
-    ],
-  },
+      [1, 0, 0]
+    ]
+  }
 ];
 
 // Emits only the faces that border empty space, one colour per voxel.
-export const buildVoxelGeometry = (
-  cells: readonly VoxelCell[],
-  isSolid: (x: number, y: number, z: number) => boolean,
-  jitter: number,
-): BufferGeometry => {
+export const buildVoxelGeometry = (cells: readonly VoxelCell[], isSolid: (x: number, y: number, z: number) => boolean, jitter: number): BufferGeometry => {
   const positions: number[] = [];
   const normals: number[] = [];
   const colors: number[] = [];
@@ -94,18 +90,9 @@ export const buildVoxelGeometry = (
   }
 
   const geometry = new BufferGeometry();
-  geometry.setAttribute(
-    "position",
-    new BufferAttribute(new Float32Array(positions), 3),
-  );
-  geometry.setAttribute(
-    "normal",
-    new BufferAttribute(new Float32Array(normals), 3),
-  );
-  geometry.setAttribute(
-    "color",
-    new BufferAttribute(new Float32Array(colors), 3),
-  );
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+  geometry.setAttribute('normal', new BufferAttribute(new Float32Array(normals), 3));
+  geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
   geometry.setIndex(new BufferAttribute(new Uint32Array(indices), 1));
   return geometry;
 };

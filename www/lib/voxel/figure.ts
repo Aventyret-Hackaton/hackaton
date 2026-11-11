@@ -1,5 +1,5 @@
-import type { VoxelGrid } from "./grid";
-import { P } from "./palette";
+import type { VoxelGrid } from './grid';
+import { P } from './palette';
 
 export type Facing = 1 | -1;
 
@@ -11,7 +11,7 @@ export type FigureLook = {
   shoes: number;
 };
 
-export type MiniArms = "down" | "up" | "forward" | "point";
+export type MiniArms = 'down' | 'up' | 'forward' | 'point';
 
 export type MiniFigureOptions = FigureLook & {
   facing?: Facing;
@@ -23,15 +23,9 @@ export type MiniFigureOptions = FigureLook & {
 };
 
 // Small passenger, eight voxels tall, centred on (cx, cz) with feet at y.
-export const paintMiniFigure = (
-  g: VoxelGrid,
-  cx: number,
-  y: number,
-  cz: number,
-  options: MiniFigureOptions,
-): void => {
+export const paintMiniFigure = (g: VoxelGrid, cx: number, y: number, cz: number, options: MiniFigureOptions): void => {
   const f = options.facing ?? 1;
-  const arms = options.arms ?? "down";
+  const arms = options.arms ?? 'down';
   const torsoY = options.seated ? y + 1 : y + 2;
   const headY = torsoY + 3;
 
@@ -47,25 +41,9 @@ export const paintMiniFigure = (
   g.fill(cx - f, cx, torsoY, torsoY + 2, cz - 1, cz + 1, options.top);
   g.fill(cx - 1, cx + 1, headY, headY + 2, cz - 1, cz + 1, options.skin);
   g.fill(cx - f, cx - f, headY, headY + 2, cz - 1, cz + 1, options.hair);
-  g.fill(
-    cx - 1,
-    cx + 1,
-    headY + 2,
-    headY + 2,
-    cz - 1,
-    cz + 1,
-    options.hat ?? options.hair,
-  );
+  g.fill(cx - 1, cx + 1, headY + 2, headY + 2, cz - 1, cz + 1, options.hat ?? options.hair);
   if (options.hat !== undefined) {
-    g.fill(
-      cx + 2 * f,
-      cx + 2 * f,
-      headY + 2,
-      headY + 2,
-      cz - 1,
-      cz + 1,
-      options.hat,
-    );
+    g.fill(cx + 2 * f, cx + 2 * f, headY + 2, headY + 2, cz - 1, cz + 1, options.hat);
   }
 
   if (options.shades) {
@@ -77,10 +55,10 @@ export const paintMiniFigure = (
   if (options.mouthOpen) g.set(cx + f, headY, cz, P.mouth);
 
   const paintArm = (side: number, pose: MiniArms): void => {
-    if (pose === "up") {
+    if (pose === 'up') {
       g.fill(cx, cx, torsoY + 2, torsoY + 4, side, side, options.top);
       g.set(cx, torsoY + 5, side, options.skin);
-    } else if (pose === "forward") {
+    } else if (pose === 'forward') {
       g.fill(cx, cx + 2 * f, torsoY + 2, torsoY + 2, side, side, options.top);
       g.set(cx + 3 * f, torsoY + 2, side, options.skin);
     } else {
@@ -88,8 +66,8 @@ export const paintMiniFigure = (
       g.set(cx, torsoY, side, options.skin);
     }
   };
-  paintArm(cz - 2, arms === "point" ? "down" : arms);
-  paintArm(cz + 2, arms === "point" ? "forward" : arms);
+  paintArm(cz - 2, arms === 'point' ? 'down' : arms);
+  paintArm(cz + 2, arms === 'point' ? 'forward' : arms);
 };
 
 export type BigFigureOptions = FigureLook & {
@@ -100,20 +78,9 @@ export type BigFigureOptions = FigureLook & {
 };
 
 // Standalone walker, eighteen voxels tall, centred on the origin mid-stride.
-export const paintBigFigure = (
-  g: VoxelGrid,
-  options: BigFigureOptions,
-): void => {
+export const paintBigFigure = (g: VoxelGrid, options: BigFigureOptions): void => {
   const f = options.facing ?? 1;
-  const box = (
-    dx0: number,
-    dx1: number,
-    y0: number,
-    y1: number,
-    z0: number,
-    z1: number,
-    color: number,
-  ): void => g.fill(dx0 * f, dx1 * f, y0, y1, z0, z1, color);
+  const box = (dx0: number, dx1: number, y0: number, y1: number, z0: number, z1: number, color: number): void => g.fill(dx0 * f, dx1 * f, y0, y1, z0, z1, color);
   const lowerLeg = options.socks ?? options.bottom;
 
   box(-1, 0, 5, 6, -2, -1, options.bottom);

@@ -1,26 +1,13 @@
-import type { ReactElement } from "react";
+import type { Metadata } from 'next';
 
-import type { Metadata } from "next";
-import { Press_Start_2P } from "next/font/google";
-
-import { GlobeView } from "@/components/globe/GlobeView";
-import { APP_TAGLINE, APP_TITLE } from "@/lib/globe/journey";
-
-const pixelFont = Press_Start_2P({
-  weight: "400",
-  subsets: ["latin"],
-  variable: "--font-pixel",
-});
+import { GlobeView } from '@/components/globe/GlobeView';
+import { APP_TAGLINE, APP_TITLE } from '@/lib/globe/journey';
 
 export const metadata: Metadata = {
   title: APP_TITLE,
-  description: APP_TAGLINE,
+  description: APP_TAGLINE
 };
 
-const GlobePage = (): ReactElement => (
-  <div className={pixelFont.variable}>
-    <GlobeView />
-  </div>
-);
+const GlobePage = (): React.JSX.Element => <GlobeView />;
 
 export default GlobePage;

@@ -1,29 +1,12 @@
-import { paintMiniFigure } from "../figure";
-import type { VoxelGrid } from "../grid";
-import type { VoxelModelDef } from "../model";
-import { P } from "../palette";
+import { paintMiniFigure } from '../figure';
+import type { VoxelGrid } from '../grid';
+import type { VoxelModelDef } from '../model';
+import { P } from '../palette';
 
-const CONTAINER_COLORS = [
-  P.coral,
-  P.mint,
-  P.yellow,
-  P.blue,
-  P.ochre,
-  P.cream,
-  P.pink,
-] as const;
+const CONTAINER_COLORS = [P.coral, P.mint, P.yellow, P.blue, P.ochre, P.cream, P.pink] as const;
 
 // Filled rectangle on one layer with the corners stepped off.
-const paintRoundedLayer = (
-  g: VoxelGrid,
-  x0: number,
-  x1: number,
-  z0: number,
-  z1: number,
-  y: number,
-  cut: number,
-  color: number,
-): void => {
+const paintRoundedLayer = (g: VoxelGrid, x0: number, x1: number, z0: number, z1: number, y: number, cut: number, color: number): void => {
   for (let x = x0; x <= x1; x += 1) {
     for (let z = z0; z <= z1; z += 1) {
       const fromCorner = Math.min(x - x0, x1 - x) + Math.min(z - z0, z1 - z);
@@ -70,8 +53,8 @@ const paintCruiser = (g: VoxelGrid): void => {
     top: P.coral,
     bottom: P.deepBlue,
     shoes: P.dark,
-    arms: "point",
-    mouthOpen: true,
+    arms: 'point',
+    mouthOpen: true
   });
   paintMiniFigure(g, 7, 3, 5, {
     skin: P.skinBrown,
@@ -80,8 +63,8 @@ const paintCruiser = (g: VoxelGrid): void => {
     bottom: P.khaki,
     shoes: P.dark,
     facing: -1,
-    arms: "up",
-    mouthOpen: true,
+    arms: 'up',
+    mouthOpen: true
   });
 };
 
@@ -121,7 +104,7 @@ const paintRaft = (g: VoxelGrid): void => {
     bottom: P.blue,
     shoes: P.skinTan,
     seated: true,
-    hat: P.straw,
+    hat: P.straw
   });
 };
 
@@ -160,7 +143,7 @@ const paintSwan = (g: VoxelGrid): void => {
     bottom: P.blue,
     shoes: P.dark,
     seated: true,
-    shades: true,
+    shades: true
   });
 };
 
@@ -195,7 +178,7 @@ const paintFlamingo = (g: VoxelGrid): void => {
     bottom: P.coral,
     shoes: P.skinLight,
     seated: true,
-    shades: true,
+    shades: true
   });
   g.fill(7, 10, 4, 4, 5, 5, P.skinLight);
   g.fill(7, 10, 4, 4, 7, 7, P.skinLight);
@@ -203,8 +186,7 @@ const paintFlamingo = (g: VoxelGrid): void => {
   g.set(5, 6, 10, P.coral);
 };
 
-const containerStackHeight = (bay: number, row: number): number =>
-  2 + ((bay * 3 + row * 5 + bay * row) % 3);
+const containerStackHeight = (bay: number, row: number): number => 2 + ((bay * 3 + row * 5 + bay * row) % 3);
 
 const paintShip = (g: VoxelGrid): void => {
   g.fill(1, 32, 0, 1, 1, 8, P.darkRed);
@@ -236,10 +218,7 @@ const paintShip = (g: VoxelGrid): void => {
       const z = 1 + row * 2;
       const height = containerStackHeight(bay, row);
       for (let level = 0; level < height; level += 1) {
-        const color =
-          CONTAINER_COLORS[
-            (bay * 4 + row + level * 3) % CONTAINER_COLORS.length
-          ];
+        const color = CONTAINER_COLORS[(bay * 4 + row + level * 3) % CONTAINER_COLORS.length];
         g.fill(x, x + 3, 5 + level * 2, 6 + level * 2, z, z + 1, color);
       }
     }
@@ -255,18 +234,18 @@ const paintShip = (g: VoxelGrid): void => {
     bottom: P.dark,
     shoes: P.dark,
     seated: true,
-    arms: "point",
+    arms: 'point'
   });
 };
 
 export const BOAT_MODELS = {
   cruiser: {
-    id: "cruiser",
-    label: "Fritidsbåt med grälande par",
-    paint: paintCruiser,
+    id: 'cruiser',
+    label: 'Fritidsbåt med grälande par',
+    paint: paintCruiser
   },
-  raft: { id: "raft", label: "Flotte", paint: paintRaft },
-  swan: { id: "swan", label: "Svantrampbåt", paint: paintSwan },
-  flamingo: { id: "flamingo", label: "Badflamingo", paint: paintFlamingo },
-  ship: { id: "ship", label: "Containerfartyg", paint: paintShip },
+  raft: { id: 'raft', label: 'Flotte', paint: paintRaft },
+  swan: { id: 'swan', label: 'Svantrampbåt', paint: paintSwan },
+  flamingo: { id: 'flamingo', label: 'Badflamingo', paint: paintFlamingo },
+  ship: { id: 'ship', label: 'Containerfartyg', paint: paintShip }
 } satisfies Record<string, VoxelModelDef>;

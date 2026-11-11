@@ -1,27 +1,18 @@
-import type { BufferGeometry, Vector3 } from "three";
+import type { BufferGeometry, Vector3 } from 'three';
 
-import type { VoxelCell } from "@/lib/voxel/grid";
-import { hash3, valueNoise3 } from "@/lib/voxel/hash";
-import { buildVoxelGeometry } from "@/lib/voxel/mesher";
+import type { VoxelCell } from '@/lib/voxel/grid';
+import { hash3, valueNoise3 } from '@/lib/voxel/hash';
+import { buildVoxelGeometry } from '@/lib/voxel/mesher';
 
-import { DEG } from "./geo";
-import {
-  LAND_MASK_BASE64,
-  LAND_MASK_HEIGHT,
-  LAND_MASK_WIDTH,
-} from "./landMask";
+import { DEG } from './geo';
+import { LAND_MASK_BASE64, LAND_MASK_HEIGHT, LAND_MASK_WIDTH } from './landMask';
 
 export const GLOBE_RADIUS = 30;
 
 const MAX_ELEVATION = 2;
 const GLOBE_JITTER = 0.07;
 
-type Region = readonly [
-  latMin: number,
-  latMax: number,
-  lonMin: number,
-  lonMax: number,
-];
+type Region = readonly [latMin: number, latMax: number, lonMin: number, lonMax: number];
 
 const DESERTS: readonly Region[] = [
   [15, 32, -17, 34],
@@ -32,7 +23,7 @@ const DESERTS: readonly Region[] = [
   [-31, -19, 116, 142],
   [-28, -18, 13, 24],
   [24, 36, -116, -103],
-  [-28, -16, -72, -68],
+  [-28, -16, -72, -68]
 ];
 
 const MOUNTAINS: readonly Region[] = [
@@ -41,7 +32,7 @@ const MOUNTAINS: readonly Region[] = [
   [34, 58, -124, -108],
   [44, 48, 6, 15],
   [61, 69, 7, 16],
-  [5, 14, 36, 42],
+  [5, 14, 36, 42]
 ];
 
 const GREENLAND: readonly Region[] = [[60, 84, -56, -18]];
@@ -64,55 +55,27 @@ export type Earth = {
   surfaceRadius: (unit: Vector3) => number;
 };
 
-const inRegions = (
-  regions: readonly Region[],
-  latitude: number,
-  longitude: number,
-): boolean =>
-  regions.some(
-    ([latMin, latMax, lonMin, lonMax]) =>
-      latitude >= latMin &&
-      latitude <= latMax &&
-      longitude >= lonMin &&
-      longitude <= lonMax,
-  );
+const inRegions = (regions: readonly Region[], latitude: number, longitude: number): boolean =>
+  regions.some(([latMin, latMax, lonMin, lonMax]) => latitude >= latMin && latitude <= latMax && longitude >= lonMin && longitude <= lonMax);
 
 const createLandLookup = (): ((lat: number, lon: number) => boolean) => {
-  const mask = Uint8Array.from(atob(LAND_MASK_BASE64), (character) =>
-    character.charCodeAt(0),
-  );
+  const mask = Uint8Array.from(atob(LAND_MASK_BASE64), (character) => character.charCodeAt(0));
   return (latitude, longitude): boolean => {
-    const row = Math.min(
-      LAND_MASK_HEIGHT - 1,
-      Math.max(0, Math.floor(90 - latitude)),
-    );
-    const column =
-      ((Math.floor(longitude + 180) % LAND_MASK_WIDTH) + LAND_MASK_WIDTH) %
-      LAND_MASK_WIDTH;
+    const row = Math.min(LAND_MASK_HEIGHT - 1, Math.max(0, Math.floor(90 - latitude)));
+    const column = ((Math.floor(longitude + 180) % LAND_MASK_WIDTH) + LAND_MASK_WIDTH) % LAND_MASK_WIDTH;
     const index = row * LAND_MASK_WIDTH + column;
     return ((mask[index >> 3] >> (index & 7)) & 1) === 1;
   };
 };
 
-const collectShell = (
-  radius: number,
-  margin: number,
-  isSolid: (x: number, y: number, z: number) => boolean,
-  colorOf: (x: number, y: number, z: number) => number,
-): VoxelCell[] => {
+const collectShell = (radius: number, margin: number, isSolid: (x: number, y: number, z: number) => boolean, colorOf: (x: number, y: number, z: number) => number): VoxelCell[] => {
   const cells: VoxelCell[] = [];
   const reach = radius + margin;
   for (let x = -reach; x <= reach; x += 1) {
     for (let y = -reach; y <= reach; y += 1) {
       for (let z = -reach; z <= reach; z += 1) {
         if (!isSolid(x, y, z)) continue;
-        const buried =
-          isSolid(x + 1, y, z) &&
-          isSolid(x - 1, y, z) &&
-          isSolid(x, y + 1, z) &&
-          isSolid(x, y - 1, z) &&
-          isSolid(x, y, z + 1) &&
-          isSolid(x, y, z - 1);
+        const buried = isSolid(x + 1, y, z) && isSolid(x - 1, y, z) && isSolid(x, y + 1, z) && isSolid(x, y - 1, z) && isSolid(x, y, z + 1) && isSolid(x, y, z - 1);
         if (!buried) cells.push({ x, y, z, color: colorOf(x, y, z) });
       }
     }
@@ -135,18 +98,10 @@ export const createEarth = (): Earth => {
       if (latitude > 77 + patch * 6) {
         return { elevation: latitude > 84 ? 1 : 0, palette: ICE };
       }
-      const coastal =
-        isLand(latitude + 2, longitude) ||
-        isLand(latitude - 2, longitude) ||
-        isLand(latitude, longitude + 2.5) ||
-        isLand(latitude, longitude - 2.5);
+      const coastal = isLand(latitude + 2, longitude) || isLand(latitude - 2, longitude) || isLand(latitude, longitude + 2.5) || isLand(latitude, longitude - 2.5);
       return { elevation: 0, palette: coastal ? SHALLOW : OCEAN };
     }
-    if (
-      latitude > 72 ||
-      latitude < -60 ||
-      inRegions(GREENLAND, latitude, longitude)
-    ) {
+    if (latitude > 72 || latitude < -60 || inRegions(GREENLAND, latitude, longitude)) {
       return { elevation: 1, palette: ICE };
     }
     if (inRegions(MOUNTAINS, nudgedLat, nudgedLon) && grain > 0.45) {
@@ -155,8 +110,7 @@ export const createEarth = (): Earth => {
     if (inRegions(DESERTS, nudgedLat, nudgedLon)) {
       return { elevation: 1, palette: SAND };
     }
-    if (latitude > 62 || latitude < -46)
-      return { elevation: 1, palette: TUNDRA };
+    if (latitude > 62 || latitude < -46) return { elevation: 1, palette: TUNDRA };
     if (latitude > 50) return { elevation: 1, palette: BOREAL };
     if (Math.abs(latitude) < 10) return { elevation: 1, palette: JUNGLE };
     return { elevation: 1, palette: GRASS };
@@ -185,11 +139,7 @@ export const createEarth = (): Earth => {
   const surfaceRadius = (unit: Vector3): number => {
     const start = GLOBE_RADIUS + MAX_ELEVATION + 1.5;
     for (let radius = start; radius > GLOBE_RADIUS - 2; radius -= 0.1) {
-      const solid = isSolid(
-        Math.round(unit.x * radius),
-        Math.round(unit.y * radius),
-        Math.round(unit.z * radius),
-      );
+      const solid = isSolid(Math.round(unit.x * radius), Math.round(unit.y * radius), Math.round(unit.z * radius));
       if (solid) return radius;
     }
     return GLOBE_RADIUS;
@@ -203,12 +153,9 @@ const MOON_COLORS = [0xe8d9b5, 0xd8c8a4, 0xf0e3c2] as const;
 const MOON_CRATER = 0x9b8f86;
 
 export const createMoonGeometry = (): BufferGeometry => {
-  const isSolid = (x: number, y: number, z: number): boolean =>
-    x * x + y * y + z * z <= MOON_RADIUS * MOON_RADIUS;
+  const isSolid = (x: number, y: number, z: number): boolean => x * x + y * y + z * z <= MOON_RADIUS * MOON_RADIUS;
   const colorOf = (x: number, y: number, z: number): number =>
-    valueNoise3(x * 0.45 + 3, y * 0.45, z * 0.45) > 0.62
-      ? MOON_CRATER
-      : MOON_COLORS[Math.floor(hash3(x, y, z) * MOON_COLORS.length)];
+    valueNoise3(x * 0.45 + 3, y * 0.45, z * 0.45) > 0.62 ? MOON_CRATER : MOON_COLORS[Math.floor(hash3(x, y, z) * MOON_COLORS.length)];
   const cells = collectShell(MOON_RADIUS, 1, isSolid, colorOf);
   const geometry = buildVoxelGeometry(cells, isSolid, GLOBE_JITTER);
   geometry.translate(-0.5, -0.5, -0.5);

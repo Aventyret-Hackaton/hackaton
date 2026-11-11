@@ -21,13 +21,17 @@ in `www/app`.
 - **App code:** `www/app` — pages, layouts, components
 - **Env:** `.env.template` + `.env.rig`, generated into `.env` by `rig env`
 
-### Voxel globe prototype
+### Voxel globe
 
-- **`/globe`** — the journey westwards around a voxel globe, keyboard only
+- **`/trip`** shows the voxel globe (`VoxelGlobe`), driven by the shared trip
+  timeline in `www/lib/timeline.ts`.
+- **`/globe`** — standalone demo on its own clock, keyboard only
   (space, arrow keys, `+`/`-`, `N`/`B`, `F`, `R`, `C`).
 - **`/globe/assets`** — contact sheet of every voxel model.
-- **Code:** scene in `www/components/globe`, voxel engine and models in
-  `www/lib/voxel`, route and sights in `www/lib/globe/journey.ts`.
+- **Code:** scene and components in `www/components/globe`, voxel engine and
+  models in `www/lib/voxel`, route and sights in `www/lib/globe/journey.ts`.
+- `TravelDirective` in `www/components/globe` lists the legs and is ready to
+  drop into the trip view. `www/components/TripGlobe.tsx` is no longer used.
 
 
 <!-- rig:start -->

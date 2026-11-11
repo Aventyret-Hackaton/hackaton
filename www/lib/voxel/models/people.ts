@@ -1,7 +1,7 @@
-import { paintBigFigure } from "../figure";
-import type { VoxelGrid } from "../grid";
-import type { VoxelModelDef } from "../model";
-import { P } from "../palette";
+import { paintBigFigure } from '../figure';
+import type { VoxelGrid } from '../grid';
+import type { VoxelModelDef } from '../model';
+import { P } from '../palette';
 
 const paintSwimmer = (g: VoxelGrid): void => {
   g.fill(-3, 19, 0, 0, 0, 7, P.blue);
@@ -28,7 +28,7 @@ const paintSwimmer = (g: VoxelGrid): void => {
     [-4, 1, 3],
     [21, 4, 6],
     [22, 2, 6],
-    [20, 1, 7],
+    [20, 1, 7]
   ];
   for (const [x, y, z] of foam) g.set(x, y, z, P.foam);
 
@@ -43,7 +43,7 @@ const paintWalker = (g: VoxelGrid): void => {
     top: P.white,
     bottom: P.khaki,
     shoes: P.ochre,
-    shades: true,
+    shades: true
   });
   g.fill(-4, 4, 18, 18, -4, 4, P.straw);
   g.fill(-2, 2, 19, 20, -2, 2, P.straw);
@@ -67,7 +67,7 @@ const paintMoonwalker = (g: VoxelGrid): void => {
     shoes: P.black,
     socks: P.white,
     glove: P.white,
-    facing: -1,
+    facing: -1
   });
   g.fill(-1, -1, 9, 12, 0, 0, P.white);
   g.fill(-3, 3, 18, 18, -3, 3, P.black);
@@ -80,11 +80,11 @@ const paintMoonwalker = (g: VoxelGrid): void => {
 };
 
 export const PEOPLE_MODELS = {
-  swimmer: { id: "swimmer", label: "Simmare", paint: paintSwimmer },
-  walker: { id: "walker", label: "Sahara-vandrare", paint: paintWalker },
+  swimmer: { id: 'swimmer', label: 'Simmare', paint: paintSwimmer },
+  walker: { id: 'walker', label: 'Sahara-vandrare', paint: paintWalker },
   moonwalker: {
-    id: "moonwalker",
-    label: "Moonwalkare",
-    paint: paintMoonwalker,
-  },
+    id: 'moonwalker',
+    label: 'Moonwalkare',
+    paint: paintMoonwalker
+  }
 } satisfies Record<string, VoxelModelDef>;

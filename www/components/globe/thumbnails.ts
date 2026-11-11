@@ -1,25 +1,12 @@
-import {
-  DirectionalLight,
-  HemisphereLight,
-  Mesh,
-  MeshLambertMaterial,
-  OrthographicCamera,
-  Scene,
-  Vector3,
-  WebGLRenderer,
-} from "three";
+import { DirectionalLight, HemisphereLight, Mesh, MeshLambertMaterial, OrthographicCamera, Scene, Vector3, WebGLRenderer } from 'three';
 
-import { buildModel } from "@/lib/voxel/model";
-import type { VoxelModelDef } from "@/lib/voxel/model";
+import { buildModel } from '@/lib/voxel/model';
+import type { VoxelModelDef } from '@/lib/voxel/model';
 
 const DEG = Math.PI / 180;
 
 // Map-view camera from the concept book: 45° around the vertical, 35° down.
-const VIEW_DIRECTION = new Vector3(
-  Math.sin(45 * DEG) * Math.cos(35 * DEG),
-  Math.sin(35 * DEG),
-  Math.cos(45 * DEG) * Math.cos(35 * DEG),
-);
+const VIEW_DIRECTION = new Vector3(Math.sin(45 * DEG) * Math.cos(35 * DEG), Math.sin(35 * DEG), Math.cos(45 * DEG) * Math.cos(35 * DEG));
 
 export const addVoxelLights = (scene: Scene): void => {
   const key = new DirectionalLight(0xffe8c2, 2.5);
@@ -28,11 +15,8 @@ export const addVoxelLights = (scene: Scene): void => {
 };
 
 // Renders each model once and returns PNG data URLs keyed by model id.
-export const renderModelThumbnails = (
-  defs: readonly VoxelModelDef[],
-  size: number,
-): Record<string, string> => {
-  const canvas = document.createElement("canvas");
+export const renderModelThumbnails = (defs: readonly VoxelModelDef[], size: number): Record<string, string> => {
+  const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: false });
@@ -62,7 +46,7 @@ export const renderModelThumbnails = (
     camera.updateProjectionMatrix();
 
     renderer.render(scene, camera);
-    images[def.id] = canvas.toDataURL("image/png");
+    images[def.id] = canvas.toDataURL('image/png');
 
     scene.remove(mesh);
     geometry.dispose();
