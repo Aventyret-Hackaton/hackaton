@@ -36,9 +36,8 @@ import { addVoxelLights } from './thumbnails';
 const BACKGROUND = 0x08162b;
 const DASH_SPACING = 2.7 * DEG;
 const ARROW_EVERY = 6;
-const COLOR_AHEAD = 0xf4905c;
-const COLOR_CURRENT = 0xffe45c;
-const COLOR_DONE = 0x4d6078;
+const COLOR_AHEAD = 0xff2a2a;
+const COLOR_DONE = 0xffffff;
 
 // The moon keeps its real size ratio and sidereal month, on a much tighter orbit.
 const MOON_SCALE = (GLOBE_RADIUS * 0.273) / MOON_RADIUS;
@@ -289,8 +288,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
   const paintMarkers = (mesh: InstancedMesh, markers: Marker[], leg: number, fraction: number): void => {
     markers.forEach((marker, index) => {
       const done = marker.leg < leg || (marker.leg === leg && marker.fraction <= fraction);
-      const hex = done ? COLOR_DONE : marker.leg === leg ? COLOR_CURRENT : COLOR_AHEAD;
-      mesh.setColorAt(index, scratch.color.setHex(hex));
+      mesh.setColorAt(index, scratch.color.setHex(done ? COLOR_DONE : COLOR_AHEAD));
     });
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   };
