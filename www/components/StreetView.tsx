@@ -8,7 +8,7 @@ import styles from './StreetView.module.css';
 type StreetViewProps = {
   title: string;
   detail?: string;
-  getTraveller: () => Traveller;
+  getTraveller: (aheadSeconds: number) => Traveller;
 };
 
 export const StreetView = ({ title, detail, getTraveller }: StreetViewProps): React.JSX.Element => {
@@ -27,7 +27,7 @@ export const StreetView = ({ title, detail, getTraveller }: StreetViewProps): Re
     const scene = createStreetScene({
       canvas,
       reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-      getTraveller: (): Traveller => getTravellerRef.current()
+      getTraveller: (aheadSeconds: number): Traveller => getTravellerRef.current(aheadSeconds)
     });
     return (): void => scene.dispose();
   }, []);

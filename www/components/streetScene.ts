@@ -1,6 +1,7 @@
-import { BoxGeometry, Color, Fog, Group, InstancedBufferAttribute, InstancedMesh, Mesh, MeshLambertMaterial, PerspectiveCamera, Scene, type Vector3, WebGLRenderer } from 'three';
+import { BoxGeometry, Color, Fog, Group, InstancedBufferAttribute, InstancedMesh, Mesh, MeshLambertMaterial, PerspectiveCamera, Scene, Vector3, WebGLRenderer } from 'three';
 
 import { createSurfaceLookup, SHALLOW, type Surface } from '@/lib/globe/earth';
+import { DEG } from '@/lib/globe/geo';
 import type { VehicleId } from '@/lib/globe/journey';
 import { hash3, valueNoise3 } from '@/lib/voxel/hash';
 import { buildModel } from '@/lib/voxel/model';
@@ -14,6 +15,8 @@ export type Traveller = {
   modelId: VehicleId;
   // Position on the globe.
   unit: Vector3;
+  // Direction of travel along the globe, zero when there is none.
+  heading: Vector3;
   // City streets instead of the terrain of the globe.
   urban: boolean;
   moving: boolean;
@@ -22,7 +25,8 @@ export type Traveller = {
 export type StreetSceneOptions = {
   canvas: HTMLCanvasElement;
   reducedMotion: boolean;
-  getTraveller: () => Traveller;
+  // The traveller the given number of real seconds from now.
+  getTraveller: (aheadSeconds: number) => Traveller;
 };
 
 export type StreetSceneHandle = {
@@ -31,7 +35,7 @@ export type StreetSceneHandle = {
 
 type Lane = 'water' | 'road' | 'path';
 
-type RowStyle = { surface: Surface; urban: boolean; lane: Lane };
+type RowStyle = { urban: boolean; lane: Lane; surfaceAt: (col: number) => Surface };
 
 const SKY = 0x8fd4ee;
 const FOG_NEAR = 30;
@@ -52,7 +56,9 @@ const MAX_BOXES = 16000;
 
 const VEHICLE_SCALE = 0.6;
 const POSES_PER_SECOND = 12;
-const SAMPLE_SECONDS = 0.2;
+// The sides sample the globe beside the route, one step per this many columns.
+const LATERAL_COLUMNS = 5;
+const LATERAL_STEP = 0.2 * DEG;
 const JITTER = 0.09;
 
 // Scenery speed in voxels per second. It says nothing about the real speed.
@@ -161,7 +167,7 @@ export const createStreetScene = ({ canvas, reducedMotion, getTraveller }: Stree
     }
   };
 
-  const addSide = (row: number, col: number, x: number, { surface, urban }: RowStyle, shade: number): void => {
+  const addSide = (row: number, col: number, x: number, surface: Surface, urban: boolean, shade: number): void => {
     const distance = Math.abs(col) - LANE_HALF_WIDTH;
     const roll = hash3(row, col, 11);
     const tone = hash3(row, col, 7);
@@ -231,33 +237,53 @@ export const createStreetScene = ({ canvas, reducedMotion, getTraveller }: Stree
   };
 
   const lookup = createSurfaceLookup();
-  const styles = new Map<number, RowStyle>();
-  let traveller = getTraveller();
+  const laneOf = ({ urban, modelId }: Traveller): Lane => (urban ? 'road' : LANES[VEHICLES[modelId].motion]);
+  let traveller = getTraveller(0);
   let styleKey = '';
   let builtRow = Number.NaN;
   let offset = 0;
 
-  const currentStyle = (): RowStyle => ({
-    surface: lookup(traveller.unit.x, traveller.unit.y, traveller.unit.z),
-    urban: traveller.urban,
-    lane: traveller.urban ? 'road' : LANES[VEHICLES[traveller.modelId].motion]
-  });
+  const right = new Vector3();
+  const beside = new Vector3();
 
+  // The globe as it is where the traveller is, and to the left and right of the route there.
+  const rowStyle = (sample: Traveller): RowStyle => {
+    const { unit, heading, urban } = sample;
+    const centre = lookup(unit.x, unit.y, unit.z);
+    const sideways = !urban && right.crossVectors(heading, unit).lengthSq() > 0;
+    if (!sideways) return { urban, lane: laneOf(sample), surfaceAt: (): Surface => centre };
+    const { x, y, z } = right.normalize();
+    const steps = new Map<number, Surface>([[0, centre]]);
+    const surfaceAt = (col: number): Surface => {
+      const step = Math.round(col / LATERAL_COLUMNS);
+      let surface = steps.get(step);
+      if (!surface) {
+        beside
+          .set(x, y, z)
+          .multiplyScalar(Math.tan(step * LATERAL_STEP))
+          .add(unit)
+          .normalize();
+        surface = lookup(beside.x, beside.y, beside.z);
+        steps.set(step, surface);
+      }
+      return surface;
+    };
+    return { urban, lane: laneOf(sample), surfaceAt };
+  };
+
+  // Each row shows the globe where the traveller is when that row reaches the vehicle.
   const rebuild = (firstRow: number): void => {
     boxCount = 0;
-    const fresh = currentStyle();
-    for (const row of styles.keys()) {
-      if (row < firstRow - ROWS_BEHIND) styles.delete(row);
-    }
+    const scrolling = traveller.moving && !reducedMotion;
+    const speed = SCROLL_SPEED[VEHICLES[traveller.modelId].motion];
     for (let x = -ROWS_BEHIND; x <= ROWS_AHEAD; x += 1) {
       const row = firstRow + x;
-      const style = styles.get(row) ?? fresh;
-      styles.set(row, style);
+      const style = rowStyle(scrolling ? getTraveller((row - offset) / speed) : traveller);
       const halfWidth = Math.ceil(NEAR_HALF_WIDTH + Math.max(0, x - CAMERA_X) * WIDENING);
       for (let col = -halfWidth; col <= halfWidth; col += 1) {
         const shade = 1 + (hash3(row, col, 1) - 0.5) * JITTER;
         if (Math.abs(col) <= LANE_HALF_WIDTH) addLane(row, col, x, style.lane, shade);
-        else addSide(row, col, x, style, shade);
+        else addSide(row, col, x, style.surfaceAt(col), style.urban, shade);
       }
     }
     terrain.count = boxCount;
@@ -309,33 +335,25 @@ export const createStreetScene = ({ canvas, reducedMotion, getTraveller }: Stree
 
   let frame = 0;
   let elapsed = 0;
-  let sinceSample = 0;
   let previousTime = performance.now();
 
   const tick = (time: number): void => {
     const delta = Math.min(0.05, (time - previousTime) / 1000);
     previousTime = time;
     elapsed += delta;
-    sinceSample += delta;
-    if (sinceSample >= SAMPLE_SECONDS) {
-      sinceSample = 0;
-      traveller = getTraveller();
-    }
-
-    // A new kind of lane replaces the scenery at once, new terrain rolls in from the horizon.
-    const style = currentStyle();
-    const key = `${style.lane}:${style.urban}:${reducedMotion ? style.surface.kind : ''}`;
-    if (key !== styleKey) {
-      styleKey = key;
-      styles.clear();
-      builtRow = Number.NaN;
-    }
-
+    traveller = getTraveller(0);
     if (traveller.moving && !reducedMotion) {
       offset += SCROLL_SPEED[VEHICLES[traveller.modelId].motion] * delta;
     }
+
+    // Standing still, the scenery only changes when the ground under the traveller does.
+    const { unit } = traveller;
+    const key = `${laneOf(traveller)}:${traveller.moving}:${lookup(unit.x, unit.y, unit.z).kind}`;
     const firstRow = Math.floor(offset);
-    if (firstRow !== builtRow) rebuild(firstRow);
+    if (firstRow !== builtRow || key !== styleKey) {
+      styleKey = key;
+      rebuild(firstRow);
+    }
     terrain.position.x = firstRow - offset;
 
     updateVehicle(elapsed);

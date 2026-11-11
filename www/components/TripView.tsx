@@ -36,6 +36,9 @@ type TripData = {
 };
 
 const STOCKHOLM_UNIT = latLonToUnit(STOCKHOLM);
+const NO_HEADING = new Vector3();
+// Fraction of a leg on each side of the traveller that gives the heading.
+const HEADING_SPAN = 0.002;
 const ARRIVED_TEXT = 'Framme. Nu då?';
 const PHASE_TICK_MS = 200;
 
@@ -61,14 +64,17 @@ const buildSteps = ({ exit }: StreetLegs): readonly DirectiveStep[] => [
   { id: 'street-in', model: FLAGS_MODEL, time: `Dag ${ARRIVAL_DAY}`, mode: 'Tillbaka i Stockholm · från Slussen', instruction: 'Sista biten.' }
 ];
 
-// Where the traveller is, and on what, for the street view.
-const getTraveller = (timeline: Timeline): Traveller => {
-  const state = getTimelineState(timeline, performance.now());
+// Where the traveller is, and on what, the given real seconds from now, for the street view.
+const getTraveller = (timeline: Timeline, aheadSeconds: number): Traveller => {
+  const state = getTimelineState(timeline, performance.now() + aheadSeconds * 1000);
   if (state.phase !== 'globe') {
-    return { modelId: 'walker', unit: STOCKHOLM_UNIT, urban: true, moving: state.phase !== 'arrived' };
+    return { modelId: 'walker', unit: STOCKHOLM_UNIT, heading: NO_HEADING, urban: true, moving: state.phase !== 'arrived' };
   }
   const { legIndex, legProgress } = locateJourney(state.progress);
-  return { modelId: LEGS[legIndex].modelId, unit: trackPoint(JOURNEY_TRACKS[legIndex], legProgress, new Vector3()), urban: false, moving: true };
+  const track = JOURNEY_TRACKS[legIndex];
+  const from = trackPoint(track, legProgress - HEADING_SPAN, new Vector3());
+  const heading = trackPoint(track, legProgress + HEADING_SPAN, new Vector3()).sub(from);
+  return { modelId: LEGS[legIndex].modelId, unit: trackPoint(track, legProgress, from), heading, urban: false, moving: true };
 };
 
 // Thousands are separated by spaces, as in Swedish.
@@ -178,7 +184,9 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
       <section className={styles.here} aria-label="Här är du">
         <h2 className={styles.hereTitle}>Här är du</h2>
         <div className={styles.street}>
-          {trip && <StreetView title={step?.mode ?? idleText} detail={step?.instruction} getTraveller={(): Traveller => getTraveller(trip.timeline)} />}
+          {trip && (
+            <StreetView title={step?.mode ?? idleText} detail={step?.instruction} getTraveller={(aheadSeconds: number): Traveller => getTraveller(trip.timeline, aheadSeconds)} />
+          )}
         </div>
         <dl className={styles.now}>
           <div>
