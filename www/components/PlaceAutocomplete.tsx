@@ -4,6 +4,8 @@ import { useEffect, useId, useRef, useState } from 'react';
 
 import type { Place, PlaceSuggestion } from '@/lib/places';
 
+import styles from './PlaceAutocomplete.module.css';
+
 type PlaceAutocompleteProps = {
   label: string;
   initialPlace?: Place | null;
@@ -109,15 +111,20 @@ export const PlaceAutocomplete = ({ label, initialPlace, onChange }: PlaceAutoco
     }
   };
 
+  const isOpen = suggestions.length > 0;
+
   return (
-    <div>
-      <label htmlFor={id}>{label}</label>
+    <div className={`${styles.field}${isOpen ? ` ${styles.open}` : ''}`}>
+      <label className={styles.label} htmlFor={id}>
+        {label}
+      </label>
       <input
+        className={styles.input}
         id={id}
         type="text"
         role="combobox"
         autoComplete="off"
-        aria-expanded={suggestions.length > 0}
+        aria-expanded={isOpen}
         aria-controls={`${id}-list`}
         aria-autocomplete="list"
         aria-activedescendant={activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined}
@@ -125,15 +132,25 @@ export const PlaceAutocomplete = ({ label, initialPlace, onChange }: PlaceAutoco
         onChange={(event) => handleInput(event.target.value)}
         onKeyDown={handleKeyDown}
       />
-      <ul id={`${id}-list`} role="listbox" hidden={suggestions.length === 0}>
+      <ul className={styles.list} id={`${id}-list`} role="listbox" hidden={!isOpen}>
         {suggestions.map((suggestion, index) => (
-          <li key={suggestion.placeId} id={`${id}-option-${index}`} role="option" aria-selected={index === activeIndex} onClick={() => void handleSelect(suggestion)}>
-            {index === activeIndex ? '> ' : ''}
+          <li
+            key={suggestion.placeId}
+            className={`${styles.option}${index === activeIndex ? ` ${styles.active}` : ''}`}
+            id={`${id}-option-${index}`}
+            role="option"
+            aria-selected={index === activeIndex}
+            onClick={() => void handleSelect(suggestion)}
+          >
             {suggestion.text}
           </li>
         ))}
       </ul>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 };
