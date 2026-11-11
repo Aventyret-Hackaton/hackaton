@@ -1,9 +1,6 @@
 import { Vector3 } from 'three';
 
-export type Coordinates = {
-  latitude: number;
-  longitude: number;
-};
+import type { Coordinates } from '@/lib/geo';
 
 export type LongRoute = {
   distanceKm: number;

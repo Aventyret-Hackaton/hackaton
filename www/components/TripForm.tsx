@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 import { PlaceAutocomplete } from '@/components/PlaceAutocomplete';
-import { TripGlobe } from '@/components/TripGlobe';
+import { TripView } from '@/components/TripView';
 import type { Place } from '@/lib/places';
 
 export const TripForm = (): React.JSX.Element => {
@@ -25,14 +25,7 @@ export const TripForm = (): React.JSX.Element => {
   };
 
   if (trip) {
-    return (
-      <>
-        <button type="button" onClick={handleReset}>
-          Ny resa
-        </button>
-        <TripGlobe origin={trip.origin} destination={trip.destination} />
-      </>
-    );
+    return <TripView origin={trip.origin} destination={trip.destination} onReset={handleReset} />;
   }
 
   return (

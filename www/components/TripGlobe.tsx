@@ -6,11 +6,13 @@ import * as THREE from 'three';
 
 import type { Place } from '@/lib/places';
 import { createLongRoute } from '@/lib/route';
+import { getGlobeProgress, getTimelineState, type Timeline } from '@/lib/timeline';
 
 type TripGlobeProps = {
   origin: Place;
   destination: Place;
-  durationSeconds?: number;
+  timeline: Timeline;
+  className?: string;
 };
 
 const ROUTE_SEGMENTS = 512;
@@ -39,7 +41,7 @@ const disposeScene = (scene: THREE.Scene): void => {
   });
 };
 
-export const TripGlobe = ({ origin, destination, durationSeconds = 60 }: TripGlobeProps): React.JSX.Element => {
+export const TripGlobe = ({ origin, destination, timeline, className }: TripGlobeProps): React.JSX.Element => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [progress, setProgress] = useState(0);
   const route = createLongRoute(origin, destination);
@@ -91,22 +93,25 @@ export const TripGlobe = ({ origin, destination, durationSeconds = 60 }: TripGlo
     scene.add(dot);
 
     const resize = (): void => {
-      const width = container.clientWidth || window.innerWidth;
-      const height = window.innerHeight;
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      if (width === 0 || height === 0) {
+        return;
+      }
       renderer.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
     };
     resize();
-    window.addEventListener('resize', resize);
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(container);
 
     const position = new THREE.Vector3();
-    const startTime = performance.now();
     let lastReported = -1;
 
     renderer.setAnimationLoop(() => {
-      const elapsed = (performance.now() - startTime) / 1000;
-      const current = Math.min(elapsed / durationSeconds, 1);
+      const state = getTimelineState(timeline, performance.now());
+      const current = getGlobeProgress(state);
 
       pointAt(current, position);
       dot.position.copy(position).multiplyScalar(1.01);
@@ -123,31 +128,27 @@ export const TripGlobe = ({ origin, destination, durationSeconds = 60 }: TripGlo
         lastReported = rounded;
         setProgress(current);
       }
-      if (current >= 1) {
+      if (state.phase === 'arrived') {
         renderer.setAnimationLoop(null);
       }
     });
 
     return (): void => {
       renderer.setAnimationLoop(null);
-      window.removeEventListener('resize', resize);
+      resizeObserver.disconnect();
       disposeScene(scene);
       texture.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [origin, destination, durationSeconds]);
+  }, [origin, destination, timeline]);
 
   return (
     <div>
-      <p>
-        {origin.address} → {destination.address}
-      </p>
+      <div ref={containerRef} className={className} />
       <p>
         {Math.round(progress * route.distanceKm).toLocaleString('sv-SE')} av {Math.round(route.distanceKm).toLocaleString('sv-SE')} km
-        {progress >= 1 ? ' – framme!' : ''}
       </p>
-      <div ref={containerRef} />
     </div>
   );
 };
