@@ -7,7 +7,7 @@
 www/node_modules/
 www/.next/
 www/.env
-www/.env.local
+www/.env*.local
 www/.npmrc
 www/next-env.d.ts
 

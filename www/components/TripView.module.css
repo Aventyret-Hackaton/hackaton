@@ -1,0 +1,26 @@
+.trip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+}
+
+.header,
+.footer {
+  grid-column: 1 / -1;
+}
+
+.panel {
+  border: 1px solid currentColor;
+  padding: 16px;
+}
+
+.globe {
+  aspect-ratio: 1;
+}
+
+@media (max-width: 900px) {
+  .trip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
