@@ -97,6 +97,12 @@ const placesFetch = async <T>(path: string, fieldMask: string, body?: unknown): 
   return (await response.json()) as T;
 };
 
+// Suggestions read "..., <town>, Sverige", which lets us drop other towns and regions.
+const hasAllowedTown = (text: string): boolean => {
+  const town = text.split(', ').at(-2);
+  return town !== undefined && STOCKHOLM_POSTAL_TOWNS.has(town);
+};
+
 export const autocompletePlaces = async (input: string, sessionToken: string): Promise<PlaceSuggestion[]> => {
   const data = await placesFetch<AutocompleteResponse>('/places:autocomplete', 'suggestions.placePrediction.placeId,suggestions.placePrediction.text.text', {
     input,
@@ -105,7 +111,9 @@ export const autocompletePlaces = async (input: string, sessionToken: string): P
     includedRegionCodes: ['se'],
     locationRestriction: { rectangle: STOCKHOLM_BOUNDS }
   });
-  return (data.suggestions ?? []).flatMap(({ placePrediction }) => (placePrediction ? [{ placeId: placePrediction.placeId, text: placePrediction.text.text }] : []));
+  return (data.suggestions ?? []).flatMap(({ placePrediction }) =>
+    placePrediction && hasAllowedTown(placePrediction.text.text) ? [{ placeId: placePrediction.placeId, text: placePrediction.text.text }] : []
+  );
 };
 
 const findComponent = (components: AddressComponent[], type: string): string | undefined => components.find(({ types }) => types?.includes(type))?.longText;
