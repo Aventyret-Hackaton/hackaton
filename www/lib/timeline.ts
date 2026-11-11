@@ -25,7 +25,7 @@ export const SPEEDS = [1, 10, 100, 1000, 10000, 100000];
 export const formatSpeed = (speed: number): string => (speed === 1 ? 'Realtid' : `${speed}x`);
 
 // The street view is never played faster than this, whatever the chosen speed.
-const MAX_STREET_SPEED = 100;
+const MAX_STREET_SPEED = 500;
 
 export const getStreetSpeed = ({ speed }: Timeline): number => Math.min(speed, MAX_STREET_SPEED);
 
