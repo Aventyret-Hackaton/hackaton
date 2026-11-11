@@ -16,7 +16,8 @@ export type VoxelModelDef = {
 
 export type BuiltModel = { geometry: BufferGeometry; size: Vector3 };
 
-export const buildModel = (def: VoxelModelDef): BuiltModel => {
+// Planted models keep the voxel column at the origin in place instead of being centred.
+const build = (def: VoxelModelDef, planted: boolean): BuiltModel => {
   const grid = createVoxelGrid();
   def.paint(grid);
   const geometry = buildVoxelGeometry(grid.cells(), grid.has, MODEL_JITTER);
@@ -24,7 +25,11 @@ export const buildModel = (def: VoxelModelDef): BuiltModel => {
   const box = geometry.boundingBox;
   if (!box) throw new Error(`Voxel model "${def.id}" is empty`);
   const size = box.getSize(new Vector3());
-  geometry.translate(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2);
+  geometry.translate(planted ? -0.5 : -(box.min.x + box.max.x) / 2, -box.min.y, planted ? -0.5 : -(box.min.z + box.max.z) / 2);
   geometry.computeBoundingSphere();
   return { geometry, size };
 };
+
+export const buildModel = (def: VoxelModelDef): BuiltModel => build(def, false);
+
+export const buildPlantedModel = (def: VoxelModelDef): BuiltModel => build(def, true);

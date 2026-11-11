@@ -4,7 +4,7 @@ import type { VoxelModelDef } from '../model';
 
 import { BOAT_MODELS } from './boats';
 import { PEOPLE_MODELS } from './people';
-import { FLAGS_MODEL, SIGHT_MODELS } from './sights';
+import { FLAGS_MODEL, GOAL_FLAG_MODEL, SIGHT_MODELS, START_FLAG_MODEL } from './sights';
 import { WHEEL_MODELS } from './wheels';
 
 export const VEHICLE_MODELS: Record<VehicleId, VoxelModelDef> = {
@@ -15,4 +15,4 @@ export const VEHICLE_MODELS: Record<VehicleId, VoxelModelDef> = {
 
 export const SIGHT_MODEL_DEFS: Record<SightModelId, VoxelModelDef> = SIGHT_MODELS;
 
-export { FLAGS_MODEL };
+export { FLAGS_MODEL, GOAL_FLAG_MODEL, START_FLAG_MODEL };

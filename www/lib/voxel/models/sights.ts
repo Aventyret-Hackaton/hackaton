@@ -168,18 +168,19 @@ const paintRoadwork = (g: VoxelGrid): void => {
   g.fill(5, 6, 2, 2, 0, 1, P.stone);
 };
 
+// One flag on its pole. Side is -1 for cloth to the left of the pole and 1 for the right.
+const paintFlag = (g: VoxelGrid, letter: string, pole: number, side: number): void => {
+  g.fill(pole - 1, pole + 1, 0, 0, -1, 1, P.coral);
+  g.fill(pole, pole, 1, 22, 0, 0, P.darkRed);
+  g.fill(pole + side, pole + side * 7, 16, 22, 0, 0, P.cream);
+  for (const y of [17, 19, 21]) g.clear(pole + side * 7, pole + side * 7, y, y, 0, 0);
+  const left = side < 0 ? pole - 5 : pole + 3;
+  drawText(letter, (column, row) => g.set(left + column, 21 - row, 0, P.navy));
+};
+
 const paintFlags = (g: VoxelGrid): void => {
-  g.fill(-2, 2, 0, 0, -1, 1, P.coral);
-  g.fill(-1, -1, 1, 22, 0, 0, P.darkRed);
-  g.fill(1, 1, 1, 22, 0, 0, P.darkRed);
-  g.fill(-8, -2, 16, 22, 0, 0, P.cream);
-  g.fill(2, 8, 16, 22, 0, 0, P.cream);
-  for (const y of [17, 19, 21]) {
-    g.clear(-8, -8, y, y, 0, 0);
-    g.clear(8, 8, y, y, 0, 0);
-  }
-  drawText('A', (column, row) => g.set(-6 + column, 21 - row, 0, P.navy));
-  drawText('B', (column, row) => g.set(4 + column, 21 - row, 0, P.navy));
+  paintFlag(g, 'A', -1, -1);
+  paintFlag(g, 'B', 1, 1);
 };
 
 export const SIGHT_MODELS = {
@@ -204,3 +205,7 @@ export const FLAGS_MODEL: VoxelModelDef = {
   label: 'Start- och målflagga',
   paint: paintFlags
 };
+
+// The same flags one by one, each with its pole in the voxel column at the origin.
+export const START_FLAG_MODEL: VoxelModelDef = { id: 'startFlag', label: 'Startflagga', paint: (g): void => paintFlag(g, 'A', 0, -1) };
+export const GOAL_FLAG_MODEL: VoxelModelDef = { id: 'goalFlag', label: 'Målflagga', paint: (g): void => paintFlag(g, 'B', 0, 1) };
