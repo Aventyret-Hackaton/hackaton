@@ -19,7 +19,19 @@ import { ARRIVAL_DAY, JOURNEY_SECONDS, LEGS, locateJourney, STOCKHOLM } from '@/
 import { JOURNEY_TRACKS, trackPoint } from '@/lib/globe/track';
 import type { Place } from '@/lib/places';
 import { estimateStreetLegs, type StreetLegs } from '@/lib/streetLegs';
-import { getEffectiveSpeed, getGlobeProgress, getNextSpeed, getTimelineState, type Timeline, TRIP_SPEEDS, type TripPhase, withSpeed } from '@/lib/timeline';
+import {
+  getEffectiveSpeed,
+  getGlobeProgress,
+  getNextSpeed,
+  getTimelineState,
+  hasStarted,
+  NOT_STARTED,
+  type Timeline,
+  TRIP_SPEEDS,
+  type TripPhase,
+  withSpeed,
+  withStart
+} from '@/lib/timeline';
 import { FLAGS_MODEL } from '@/lib/voxel/models';
 
 import type { Traveller } from './streetScene';
@@ -42,6 +54,7 @@ const NO_HEADING = new Vector3();
 const HEADING_SPAN = 0.002;
 const ARRIVED_TEXT = 'Framme. Nu då?';
 const PHASE_TICK_MS = 200;
+const START_HINT: KeyHint = ['Mellanslag', 'ge dig av'];
 
 const fetchStreetLegs = async (origin: Place, destination: Place, signal: AbortSignal): Promise<StreetLegs> => {
   const params = new URLSearchParams({
@@ -69,7 +82,7 @@ const buildSteps = ({ exit }: StreetLegs): readonly DirectiveStep[] => [
 const getTraveller = (timeline: Timeline, aheadSeconds: number): Traveller => {
   const state = getTimelineState(timeline, performance.now() + aheadSeconds * 1000);
   if (state.phase !== 'globe') {
-    return { modelId: 'walker', unit: STOCKHOLM_UNIT, heading: NO_HEADING, urban: true, moving: state.phase !== 'arrived' };
+    return { modelId: 'walker', unit: STOCKHOLM_UNIT, heading: NO_HEADING, urban: true, moving: hasStarted(timeline) && state.phase !== 'arrived' };
   }
   const { legIndex, legProgress } = locateJourney(state.progress);
   const track = JOURNEY_TRACKS[legIndex];
@@ -109,13 +122,13 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
 
   useEffect(() => {
     const controller = new AbortController();
-    // The clock starts once the street legs are known, or have been estimated.
+    // The trip is ready once the street legs are known, or have been estimated. Space sets it off.
     const start = (legs: StreetLegs): void => {
       if (!controller.signal.aborted) {
         setTrip({
           legs,
           timeline: {
-            startTime: performance.now(),
+            startTime: NOT_STARTED,
             elapsedSeconds: 0,
             speed: TRIP_SPEEDS[0],
             outboundSeconds: legs.outbound.durationSeconds,
@@ -130,19 +143,24 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
     return (): void => controller.abort();
   }, [origin, destination]);
 
-  // S steps the speed up one notch, and back to real time after the fastest allowed.
+  // Space sets the trip off. S steps the speed up one notch, and back to real time after the fastest allowed.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       const modified = event.metaKey || event.ctrlKey || event.altKey;
-      if (modified || event.repeat || isTypingTarget(event.target) || event.key.toLowerCase() !== 's') {
+      const key = event.key.toLowerCase();
+      if (modified || event.repeat || isTypingTarget(event.target) || (key !== 's' && key !== ' ')) {
         return;
       }
+      event.preventDefault();
       const now = performance.now();
       setTrip((previous) => {
         if (!previous) {
           return previous;
         }
         const { timeline } = previous;
+        if (key === ' ') {
+          return { ...previous, timeline: withStart(timeline, now) };
+        }
         return { ...previous, timeline: withSpeed(timeline, getNextSpeed(timeline, getTimelineState(timeline, now).phase), now) };
       });
     };
@@ -150,7 +168,9 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
     return (): void => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const hints: readonly KeyHint[] = [['S', `snabbare · nu ${formatSpeed(trip ? getEffectiveSpeed(trip.timeline, phase) : TRIP_SPEEDS[0])}`], ...SCANLINE_HINT];
+  const started = trip !== null && hasStarted(trip.timeline);
+  const speedHint: KeyHint = ['S', `snabbare · nu ${formatSpeed(trip ? getEffectiveSpeed(trip.timeline, phase) : TRIP_SPEEDS[0])}`];
+  const hints: readonly KeyHint[] = [...(started ? [] : [START_HINT]), speedHint, ...SCANLINE_HINT];
   const stepByPhase: Record<TripPhase, number | null> = {
     outbound: 0,
     jetty: 1,
@@ -158,7 +178,7 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
     inbound: steps.length - 1,
     arrived: null
   };
-  const currentStep = phase ? stepByPhase[phase] : null;
+  const currentStep = phase && started ? stepByPhase[phase] : null;
   const step = currentStep === null ? undefined : steps[currentStep];
   const nextStep = currentStep === null ? undefined : steps[currentStep + 1];
   const idleText = phase === 'arrived' ? ARRIVED_TEXT : 'Väntar på avfärd';
@@ -178,6 +198,7 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
             extraHints={hints}
             onLegChange={setLegIndex}
             places={places}
+            underWay={started}
             getProgress={(): number => getGlobeProgress(getTimelineState(trip.timeline, performance.now()))}
           />
         ) : (

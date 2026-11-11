@@ -142,6 +142,8 @@ export type GlobeSceneOptions = {
   reducedMotion: boolean;
   // Journey progress from 0 to 1. Without it the scene runs on its own clock.
   getProgress?: () => number;
+  // Whether a trip on an outside clock has set off, even if it has not reached the globe yet.
+  isUnderWay?: () => boolean;
   onLegChange: (index: number) => void;
   onStatusChange: (status: GlobeStatus) => void;
 };
@@ -620,8 +622,11 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     introNear = framing.distance;
   };
 
+  // The view stays on the city until the trip sets off.
+  const underWay = (): boolean => status.started || (options.isUnderWay?.() ?? false);
+
   const updateIntro = (delta: number): void => {
-    const goal = status.started ? 1 : 0;
+    const goal = underWay() ? 1 : 0;
     const step = reducedMotion ? 1 : delta / INTRO_SECONDS;
     introTime = goal > introTime ? Math.min(goal, introTime + step) : Math.max(goal, introTime - step);
     introEase = introTime * introTime * (3 - 2 * introTime);
@@ -781,7 +786,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
   // Start facing Stockholm without easing in from the far side, and already
   // out on the globe if the journey is under way.
   if (options.getProgress) syncToProgress(options.getProgress());
-  introTime = status.started ? 1 : 0;
+  introTime = underWay() ? 1 : 0;
   updateIntro(0);
   locateVehicle();
   updateCamera(0);
@@ -818,19 +823,18 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
       setLeg(clamp(legIndex + delta, 0, LEGS.length - 1), 0);
       setStatus({ finished: false, started: true });
     },
-    // The view is locked on the city until the journey starts.
     toggleFollow: (): void => {
-      if (!status.started) return;
+      if (!underWay()) return;
       idleTime = 0;
       setStatus({ follow: !status.follow });
     },
     setSpin: (x: number, y: number): void => {
-      spinX = status.started ? x : 0;
-      spinY = status.started ? y : 0;
+      spinX = underWay() ? x : 0;
+      spinY = underWay() ? y : 0;
       if ((spinX !== 0 || spinY !== 0) && status.follow) setStatus({ follow: false });
     },
     zoom: (direction: number): void => {
-      if (!status.started) return;
+      if (!underWay()) return;
       zoomLevel = clamp(zoomLevel + (direction > 0 ? -1 : 1), 0, EARTH_LEVEL_COUNT - 1);
       zoomFactor = ZOOM_STEP_RATIO ** (DEFAULT_EARTH_LEVEL - zoomLevel);
     }

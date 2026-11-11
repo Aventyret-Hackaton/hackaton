@@ -19,6 +19,8 @@ type VoxelGlobeProps = {
   onStatusChange?: (status: GlobeStatus) => void;
   // The two addresses in Stockholm. Without them the globe uses a pair of its own.
   places?: GlobePlaces;
+  // Whether a trip on an outside clock has set off. The globe leaves the close-up when it has.
+  underWay?: boolean;
   extraHints?: readonly KeyHint[];
   className?: string;
 };
@@ -49,11 +51,11 @@ const INITIAL_STATUS: GlobeStatus = {
   follow: true
 };
 
-export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, places, extraHints = [], className }: VoxelGlobeProps): React.JSX.Element => {
+export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, places, underWay = true, extraHints = [], className }: VoxelGlobeProps): React.JSX.Element => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const labelLayerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<GlobeSceneHandle | null>(null);
-  const callbacksRef = useRef({ getProgress, onLegChange, onStatusChange });
+  const callbacksRef = useRef({ getProgress, onLegChange, onStatusChange, underWay });
   const placesRef = useRef(places);
   // The scene is rebuilt when the addresses change, not when the object does.
   const placesKey = JSON.stringify(places ?? null);
@@ -62,7 +64,7 @@ export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, places, e
   const driven = getProgress !== undefined;
 
   useEffect(() => {
-    callbacksRef.current = { getProgress, onLegChange, onStatusChange };
+    callbacksRef.current = { getProgress, onLegChange, onStatusChange, underWay };
     placesRef.current = places;
   });
 
@@ -83,6 +85,7 @@ export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, places, e
       places: placesRef.current,
       reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
       getProgress: driven ? (): number => callbacksRef.current.getProgress?.() ?? 0 : undefined,
+      isUnderWay: driven ? (): boolean => callbacksRef.current.underWay : undefined,
       onLegChange: (index): void => {
         setLegIndex(index);
         callbacksRef.current.onLegChange?.(index);
@@ -172,7 +175,7 @@ export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, places, e
   }, [driven]);
 
   const leg = LEGS[legIndex];
-  const waitingText = driven ? 'Tillfälligt stillastående.' : 'Tryck på mellanslag för att ge dig av.';
+  const waitingText = driven && underWay ? 'Tillfälligt stillastående.' : 'Tryck på mellanslag för att ge dig av.';
   const statusText = status.finished ? `Dag ${ARRIVAL_DAY}. Framme. Nu då?` : status.started ? `Nu: ${leg.mode} · ${leg.from} → ${leg.to}` : waitingText;
   const hints = [...(driven ? [] : JOURNEY_HINTS), ...VIEW_HINTS, ...extraHints];
 

@@ -5,8 +5,11 @@ export const TRIP_SPEEDS = [1, 100, 1000, 10000, 100000, 1000000, 10000000] as c
 // The last leg, from Slussen, never plays faster than this.
 const INBOUND_MAX_SPEED = 300;
 
+// The clock of a trip that has not set off yet stands still.
+export const NOT_STARTED = Number.POSITIVE_INFINITY;
+
 export type Timeline = {
-  // performance.now() timestamp of when the current speed was set.
+  // performance.now() timestamp of when the current speed was set, or NOT_STARTED.
   startTime: number;
   // Trip seconds that had been travelled at that time.
   elapsedSeconds: number;
@@ -48,10 +51,15 @@ export const getNextSpeed = (timeline: Timeline, phase: TripPhase | null): numbe
   return TRIP_SPEEDS.find((speed) => speed > current) ?? TRIP_SPEEDS[0];
 };
 
-// The same trip continuing from where it is, at another speed.
+export const hasStarted = ({ startTime }: Timeline): boolean => startTime !== NOT_STARTED;
+
+// The same trip, setting off now unless it already has.
+export const withStart = (timeline: Timeline, now: number): Timeline => (hasStarted(timeline) ? timeline : { ...timeline, startTime: now });
+
+// The same trip continuing from where it is, at another speed. A trip that waits keeps waiting.
 export const withSpeed = (timeline: Timeline, speed: number, now: number): Timeline => ({
   ...timeline,
-  startTime: now,
+  startTime: hasStarted(timeline) ? now : NOT_STARTED,
   elapsedSeconds: getElapsedSeconds(timeline, now),
   speed
 });
