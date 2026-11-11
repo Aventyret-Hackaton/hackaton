@@ -15,6 +15,14 @@ in `www/app`.
 - **App code:** `www/app` — pages, layouts, components
 - **Env:** `.env.template` + `.env.rig`, generated into `.env` by `rig env`
 
+### Voxel globe prototype
+
+- **`/globe`** — the journey westwards around a voxel globe, keyboard only
+  (space, arrow keys, `+`/`-`, `N`/`B`, `F`, `R`, `C`).
+- **`/globe/assets`** — contact sheet of every voxel model.
+- **Code:** scene in `www/components/globe`, voxel engine and models in
+  `www/lib/voxel`, route and sights in `www/lib/globe/journey.ts`.
+
 
 <!-- rig:start -->
 <!-- Written by 'rig self update'. Change it in the rig, not here. -->
