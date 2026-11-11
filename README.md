@@ -21,6 +21,22 @@ in `www/app`.
 - **App code:** `www/app` — pages, layouts, components
 - **Env:** `.env.template` + `.env.rig`, generated into `.env` by `rig env`
 
+### Start view
+
+- **`/`** — the form sits on a voxel scene (`www/components/startBackdrop.ts`)
+  that recreates the old background picture, `www/public/start-bg.png`, which
+  is no longer shown. Places in the scene are given as pixels of that picture
+  (`www/lib/start/frame.ts`), so the panel stays over the same spot. The scene
+  fills the window, and wider or taller windows see more of it.
+- The people, the taxi, the metro, the swan boat, the rocket, the sun, the
+  clouds and the river move. With reduced motion the scene stands still.
+- The name is voxel text on a layer of its own in front of the hills. The
+  camera follows the pointer a little and drifts by itself, which sets the
+  layers apart.
+- **Code:** models in `www/lib/start`, the ground with the road, the rails and
+  the river in `www/lib/start/ground.ts`. Without WebGL the view shows a plain
+  sky and the name as text.
+
 ### Voxel globe
 
 - **`/trip`** uses the voxel interface for the whole view: title bar, travel

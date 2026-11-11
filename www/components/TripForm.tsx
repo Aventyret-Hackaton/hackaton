@@ -66,7 +66,7 @@ export const TripForm = (): React.JSX.Element => {
             </div>
 
             <button className={styles.startBtn} type="submit" disabled={!origin || !destination}>
-              Starta bataljen
+              Starta omvägen
               <span className={styles.arrow} aria-hidden="true">
                 ▶
               </span>
