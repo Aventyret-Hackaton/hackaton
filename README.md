@@ -26,7 +26,8 @@ in `www/app`.
 - **`/trip`** uses the voxel interface for the whole view: title bar, travel
   directive, globe and the "Här är du" panel with the street view. The globe,
   the directive and the street view follow the shared timeline in
-  `www/lib/timeline.ts`, which plays the whole trip in real time. `S` steps the speed
+  `www/lib/timeline.ts`, which plays the whole trip in real time once space
+  has set it off. `S` steps the speed
   up through 100x to 10000000x and back to real time. The last leg, from
   Slussen to the destination, is capped at 300x.
 - The street legs in Stockholm (`www/lib/streetLegs.ts`) go from the origin to
