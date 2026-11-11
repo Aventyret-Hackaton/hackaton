@@ -9,13 +9,15 @@ import styles from './PlaceAutocomplete.module.css';
 type PlaceAutocompleteProps = {
   label: string;
   initialPlace?: Place | null;
+  placeholder?: string;
+  tone?: 'light' | 'dark';
   onChange: (place: Place | null) => void;
 };
 
 const DEBOUNCE_MS = 250;
 const MIN_QUERY_LENGTH = 2;
 
-export const PlaceAutocomplete = ({ label, initialPlace, onChange }: PlaceAutocompleteProps): React.JSX.Element => {
+export const PlaceAutocomplete = ({ label, initialPlace, placeholder, tone = 'light', onChange }: PlaceAutocompleteProps): React.JSX.Element => {
   const id = useId();
   const [query, setQuery] = useState(initialPlace?.address ?? '');
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
@@ -114,7 +116,7 @@ export const PlaceAutocomplete = ({ label, initialPlace, onChange }: PlaceAutoco
   const isOpen = suggestions.length > 0;
 
   return (
-    <div className={`${styles.field}${isOpen ? ` ${styles.open}` : ''}`}>
+    <div className={`${styles.field}${tone === 'dark' ? ` ${styles.dark}` : ''}${isOpen ? ` ${styles.open}` : ''}`}>
       <label className={styles.label} htmlFor={id}>
         {label}
       </label>
@@ -128,6 +130,7 @@ export const PlaceAutocomplete = ({ label, initialPlace, onChange }: PlaceAutoco
         aria-controls={`${id}-list`}
         aria-autocomplete="list"
         aria-activedescendant={activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined}
+        placeholder={placeholder}
         value={query}
         onChange={(event) => handleInput(event.target.value)}
         onKeyDown={handleKeyDown}
