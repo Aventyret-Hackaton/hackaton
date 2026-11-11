@@ -71,12 +71,11 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
-      const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-      const nextSpeed = SPEEDS[SPEEDS.indexOf(speedRef.current) + step];
-      if (step === 0 || nextSpeed === undefined) {
+      if (event.key.toLowerCase() !== 's' || event.repeat || event.metaKey || event.ctrlKey || event.altKey) {
         return;
       }
-      event.preventDefault();
+      // Steps up one speed and wraps around to real time after the fastest.
+      const nextSpeed = SPEEDS[(SPEEDS.indexOf(speedRef.current) + 1) % SPEEDS.length];
       speedRef.current = nextSpeed;
       setSpeed(nextSpeed);
       setTrip((previous) => previous && { ...previous, timeline: withSpeed(previous.timeline, nextSpeed, performance.now()) });
@@ -92,7 +91,7 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
         <button type="button" onClick={onReset}>
           En gång till. Av oklara skäl.
         </button>
-        <p>Hastighet: {formatSpeed(speed)} (ändra med vänster- och högerpil)</p>
+        <p>Hastighet: {formatSpeed(speed)} (ändra med S)</p>
       </header>
 
       <section className={styles.panel}>
