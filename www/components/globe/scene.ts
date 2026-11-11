@@ -19,10 +19,11 @@ import {
 } from 'three';
 
 import { createEarth, createMoonGeometry, GLOBE_RADIUS, MOON_RADIUS } from '@/lib/globe/earth';
-import { DEG, latLonToUnit, samplePath } from '@/lib/globe/geo';
+import { DEG, latLonToUnit } from '@/lib/globe/geo';
 import type { LatLon } from '@/lib/globe/geo';
-import { ARRIVAL_DAY, LEGS, SIGHTS, STOCKHOLM } from '@/lib/globe/journey';
+import { ARRIVAL_DAY, LEGS, locateJourney, SIGHTS, STOCKHOLM } from '@/lib/globe/journey';
 import type { VehicleId } from '@/lib/globe/journey';
+import { JOURNEY_TRACKS, type Track, trackPoint } from '@/lib/globe/track';
 import { hash3 } from '@/lib/voxel/hash';
 import { buildVoxelGeometry } from '@/lib/voxel/mesher';
 import { buildModel } from '@/lib/voxel/model';
@@ -73,9 +74,9 @@ const LABEL_MIN_FACING = 0.32;
 const LABEL_RANGE = Math.cos(32 * DEG);
 const LABELS_SHOWN = 2;
 
-type Motion = 'float' | 'walk' | 'roll';
+export type Motion = 'float' | 'walk' | 'roll';
 
-const VEHICLES: Record<VehicleId, { scale: number; motion: Motion }> = {
+export const VEHICLES: Record<VehicleId, { scale: number; motion: Motion }> = {
   cruiser: { scale: 0.34, motion: 'float' },
   scooter: { scale: 0.42, motion: 'roll' },
   swimmer: { scale: 0.27, motion: 'float' },
@@ -119,36 +120,11 @@ export type GlobeSceneHandle = {
   zoom: (direction: number) => void;
 };
 
-type Track = { points: Vector3[]; cumulative: number[]; length: number };
-
 type Marker = { leg: number; fraction: number };
 
 type Label = { element: HTMLElement; anchor: Vector3; closeness: number };
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
-
-const buildTrack = (path: readonly LatLon[]): Track => {
-  const points = samplePath(path, 0.5);
-  const cumulative = [0];
-  for (let index = 1; index < points.length; index += 1) {
-    cumulative.push(cumulative[index - 1] + points[index - 1].angleTo(points[index]));
-  }
-  return { points, cumulative, length: cumulative[cumulative.length - 1] };
-};
-
-const trackPoint = (track: Track, fraction: number, target: Vector3): Vector3 => {
-  const distance = clamp(fraction, 0, 1) * track.length;
-  let index = 1;
-  while (index < track.points.length - 1 && track.cumulative[index] < distance) {
-    index += 1;
-  }
-  const span = track.cumulative[index] - track.cumulative[index - 1];
-  const t = span > 0 ? (distance - track.cumulative[index - 1]) / span : 0;
-  return target
-    .copy(track.points[index - 1])
-    .lerp(track.points[index], t)
-    .normalize();
-};
 
 const eastOf = (unit: Vector3, target: Vector3): Vector3 => {
   target.set(unit.z, 0, -unit.x);
@@ -249,7 +225,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
   };
 
   // Route: dashes and arrows hovering above the surface.
-  const tracks = LEGS.map((leg) => buildTrack(leg.path));
+  const tracks = JOURNEY_TRACKS;
   const dashes: Marker[] = [];
   const arrows: Marker[] = [];
   let carry = DASH_SPACING / 2;
@@ -383,19 +359,10 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
 
   const legSeconds = (index: number): number => clamp((tracks[index].length / DEG) * SECONDS_PER_DEGREE, MIN_LEG_SECONDS, MAX_LEG_SECONDS);
 
-  const legShares = tracks.map((_, index) => legSeconds(index));
-  const journeySeconds = legShares.reduce((sum, seconds) => sum + seconds, 0);
-
   // Driven mode: an outside clock decides how far along the journey is.
   const syncToProgress = (progress: number): void => {
-    const travelled = clamp(progress, 0, 1) * journeySeconds;
-    let index = 0;
-    let before = 0;
-    while (index < legShares.length - 1 && before + legShares[index] <= travelled) {
-      before += legShares[index];
-      index += 1;
-    }
-    setLeg(index, clamp((travelled - before) / legShares[index], 0, 1));
+    const location = locateJourney(progress);
+    setLeg(location.legIndex, location.legProgress);
 
     const running = progress > 0 && progress < 1;
     const started = progress > 0;

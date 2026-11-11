@@ -38,7 +38,7 @@ const MOUNTAINS: readonly Region[] = [
 const GREENLAND: readonly Region[] = [[60, 84, -56, -18]];
 
 const OCEAN = [0x1b4697, 0x1f4fa8, 0x2459b8, 0x1f4fa8] as const;
-const SHALLOW = [0x2f6ccb, 0x3a78d4] as const;
+export const SHALLOW = [0x2f6ccb, 0x3a78d4] as const;
 const ICE = [0xf1eee4, 0xdde3f0, 0xf7f4ec] as const;
 const ROCK = [0x8a8f8c, 0x7d8a9a] as const;
 const SNOW = [0xf1eee4] as const;
@@ -48,7 +48,9 @@ const BOREAL = [0x3e8440, 0x4c9446, 0x357538] as const;
 const JUNGLE = [0x3c9a3c, 0x48a83e, 0x2f8a36] as const;
 const GRASS = [0x6db33f, 0x5fa83c, 0x7cbb45, 0x8fbe4a] as const;
 
-type Surface = { elevation: number; palette: readonly number[] };
+export type SurfaceKind = 'ocean' | 'shallow' | 'ice' | 'rock' | 'snow' | 'sand' | 'tundra' | 'boreal' | 'jungle' | 'grass';
+
+export type Surface = { kind: SurfaceKind; elevation: number; palette: readonly number[] };
 
 export type Earth = {
   geometry: BufferGeometry;
@@ -83,10 +85,11 @@ const collectShell = (radius: number, margin: number, isSolid: (x: number, y: nu
   return cells;
 };
 
-export const createEarth = (): Earth => {
+// Classifies the surface of the globe under a unit vector.
+export const createSurfaceLookup = (): ((ux: number, uy: number, uz: number) => Surface) => {
   const isLand = createLandLookup();
 
-  const classify = (ux: number, uy: number, uz: number): Surface => {
+  return (ux, uy, uz): Surface => {
     const latitude = Math.asin(uy) / DEG;
     const longitude = Math.atan2(ux, uz) / DEG;
     const patch = valueNoise3(ux * 8, uy * 8, uz * 8);
@@ -96,25 +99,29 @@ export const createEarth = (): Earth => {
 
     if (!isLand(latitude, longitude)) {
       if (latitude > 77 + patch * 6) {
-        return { elevation: latitude > 84 ? 1 : 0, palette: ICE };
+        return { kind: 'ice', elevation: latitude > 84 ? 1 : 0, palette: ICE };
       }
       const coastal = isLand(latitude + 2, longitude) || isLand(latitude - 2, longitude) || isLand(latitude, longitude + 2.5) || isLand(latitude, longitude - 2.5);
-      return { elevation: 0, palette: coastal ? SHALLOW : OCEAN };
+      return coastal ? { kind: 'shallow', elevation: 0, palette: SHALLOW } : { kind: 'ocean', elevation: 0, palette: OCEAN };
     }
     if (latitude > 72 || latitude < -60 || inRegions(GREENLAND, latitude, longitude)) {
-      return { elevation: 1, palette: ICE };
+      return { kind: 'ice', elevation: 1, palette: ICE };
     }
     if (inRegions(MOUNTAINS, nudgedLat, nudgedLon) && grain > 0.45) {
-      return { elevation: 2, palette: grain > 0.68 ? SNOW : ROCK };
+      return grain > 0.68 ? { kind: 'snow', elevation: 2, palette: SNOW } : { kind: 'rock', elevation: 2, palette: ROCK };
     }
     if (inRegions(DESERTS, nudgedLat, nudgedLon)) {
-      return { elevation: 1, palette: SAND };
+      return { kind: 'sand', elevation: 1, palette: SAND };
     }
-    if (latitude > 62 || latitude < -46) return { elevation: 1, palette: TUNDRA };
-    if (latitude > 50) return { elevation: 1, palette: BOREAL };
-    if (Math.abs(latitude) < 10) return { elevation: 1, palette: JUNGLE };
-    return { elevation: 1, palette: GRASS };
+    if (latitude > 62 || latitude < -46) return { kind: 'tundra', elevation: 1, palette: TUNDRA };
+    if (latitude > 50) return { kind: 'boreal', elevation: 1, palette: BOREAL };
+    if (Math.abs(latitude) < 10) return { kind: 'jungle', elevation: 1, palette: JUNGLE };
+    return { kind: 'grass', elevation: 1, palette: GRASS };
   };
+};
+
+export const createEarth = (): Earth => {
+  const classify = createSurfaceLookup();
 
   const isSolid = (x: number, y: number, z: number): boolean => {
     const squared = x * x + y * y + z * z;

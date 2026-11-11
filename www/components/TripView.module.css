@@ -95,16 +95,6 @@
     2px 0 0 0 var(--frame);
 }
 
-/* The street view brings its own unstyled status line. */
-.street p {
-  margin: 0;
-  padding: 8px;
-  background: var(--row);
-  color: var(--text);
-  font-size: 12px;
-  line-height: 1.3;
-}
-
 .now {
   display: grid;
   gap: 8px;

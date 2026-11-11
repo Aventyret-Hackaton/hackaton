@@ -24,8 +24,11 @@ in `www/app`.
 ### Voxel globe
 
 - **`/trip`** uses the voxel interface for the whole view: title bar, travel
-  directive, globe and the "Här är du" panel with the street view. The globe
-  and the directive follow the shared timeline in `www/lib/timeline.ts`.
+  directive, globe and the "Här är du" panel with the street view. The globe,
+  the directive and the street view follow the shared timeline in
+  `www/lib/timeline.ts`, which plays the whole trip in real time.
+- The street view is a mocked voxel scene (`www/components/streetScene.ts`)
+  that takes its terrain from the globe under the traveller.
 - **`/globe`** — standalone demo on its own clock, keyboard only
   (space, arrow keys, `+`/`-`, `N`/`B`, `F`, `R`, `C`).
 - **`/globe/assets`** — contact sheet of every voxel model.
