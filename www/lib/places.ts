@@ -31,11 +31,36 @@ type PlaceDetailsResponse = {
 
 const PLACES_URL = 'https://places.googleapis.com/v1';
 
-// Rough bounding box around Stockholm County, exact check is done on select.
+// Bounding box around the allowed postal towns, exact check is done on select.
 const STOCKHOLM_BOUNDS = {
-  low: { latitude: 58.6, longitude: 17.2 },
-  high: { latitude: 60.3, longitude: 19.9 }
+  low: { latitude: 59.18, longitude: 17.76 },
+  high: { latitude: 59.44, longitude: 18.45 }
 };
+
+// Google has no municipality component for Sweden, so match on postal towns.
+const STOCKHOLM_POSTAL_TOWNS = new Set([
+  'Bagarmossen',
+  'Bandhagen',
+  'Bromma',
+  'Enskede',
+  'Enskede Gård',
+  'Enskededalen',
+  'Farsta',
+  'Hägersten',
+  'Hässelby',
+  'Johanneshov',
+  'Kista',
+  'Skarpnäck',
+  'Skärholmen',
+  'Sköndal',
+  'Spånga',
+  'Stockholm',
+  'Stockholm-Globen',
+  'Tyresö',
+  'Vällingby',
+  'Älvsjö',
+  'Årsta'
+]);
 
 export class PlacesError extends Error {
   constructor(
@@ -83,8 +108,16 @@ export const autocompletePlaces = async (input: string, sessionToken: string): P
   return (data.suggestions ?? []).flatMap(({ placePrediction }) => (placePrediction ? [{ placeId: placePrediction.placeId, text: placePrediction.text.text }] : []));
 };
 
-const isInStockholm = (components: AddressComponent[]): boolean =>
-  components.some(({ types, longText }) => types?.includes('administrative_area_level_1') && longText?.includes('Stockholm'));
+const findComponent = (components: AddressComponent[], type: string): string | undefined => components.find(({ types }) => types?.includes(type))?.longText;
+
+const isInStockholm = (components: AddressComponent[]): boolean => {
+  const postalTown = findComponent(components, 'postal_town');
+  if (postalTown) {
+    return STOCKHOLM_POSTAL_TOWNS.has(postalTown);
+  }
+  // Areas and landmarks lack a postal town but have the city as locality.
+  return findComponent(components, 'locality') === 'Stockholm';
+};
 
 export const getStockholmPlace = async (placeId: string, sessionToken: string): Promise<Place> => {
   const query = new URLSearchParams({ languageCode: 'sv', sessionToken });
