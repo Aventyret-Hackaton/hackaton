@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { ARRIVAL_DAY, LEGS } from '@/lib/globe/journey';
 
+import { isTypingTarget } from './keyboard';
 import { pixelFont } from './pixelFont';
 import { createGlobeScene } from './scene';
 import type { GlobeSceneHandle, GlobeStatus } from './scene';
@@ -45,8 +46,6 @@ const INITIAL_STATUS: GlobeStatus = {
   finished: false,
   follow: true
 };
-
-const isTyping = (target: EventTarget | null): boolean => target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
 
 export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, extraHints = [], className }: VoxelGlobeProps): React.JSX.Element => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -121,7 +120,7 @@ export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, extraHint
 
     const onKeyDown = (event: KeyboardEvent): void => {
       const scene = sceneRef.current;
-      if (!scene || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) {
+      if (!scene || event.metaKey || event.ctrlKey || event.altKey || isTypingTarget(event.target)) {
         return;
       }
       const key = event.key.toLowerCase();
@@ -164,7 +163,7 @@ export const VoxelGlobe = ({ getProgress, onLegChange, onStatusChange, extraHint
   }, [driven]);
 
   const leg = LEGS[legIndex];
-  const waitingText = driven ? 'Det här räknas också som en resa.' : 'Tryck på mellanslag för att ge dig av.';
+  const waitingText = driven ? 'Tillfälligt stillastående.' : 'Tryck på mellanslag för att ge dig av.';
   const statusText = status.finished ? `Dag ${ARRIVAL_DAY}. Framme. Nu då?` : status.started ? `Nu: ${leg.mode} · ${leg.from} → ${leg.to}` : waitingText;
   const hints = [...(driven ? [] : JOURNEY_HINTS), ...VIEW_HINTS, ...extraHints];
 

@@ -23,15 +23,15 @@ in `www/app`.
 
 ### Voxel globe
 
-- **`/trip`** shows the voxel globe (`VoxelGlobe`), driven by the shared trip
-  timeline in `www/lib/timeline.ts`.
+- **`/trip`** uses the voxel interface for the whole view: title bar, travel
+  directive, globe and the "Här är du" panel with the street view. The globe
+  and the directive follow the shared timeline in `www/lib/timeline.ts`.
 - **`/globe`** — standalone demo on its own clock, keyboard only
   (space, arrow keys, `+`/`-`, `N`/`B`, `F`, `R`, `C`).
 - **`/globe/assets`** — contact sheet of every voxel model.
 - **Code:** scene and components in `www/components/globe`, voxel engine and
   models in `www/lib/voxel`, route and sights in `www/lib/globe/journey.ts`.
-- `TravelDirective` in `www/components/globe` lists the legs and is ready to
-  drop into the trip view. `www/components/TripGlobe.tsx` is no longer used.
+- `www/components/TripGlobe.tsx` is no longer used.
 
 
 <!-- rig:start -->

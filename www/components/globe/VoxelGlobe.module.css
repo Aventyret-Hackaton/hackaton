@@ -99,7 +99,7 @@
 }
 
 /* In a small panel the key hints would cover the globe. */
-@container (max-width: 520px) {
+@container (max-width: 400px) {
   .hints {
     display: none;
   }

@@ -1,12 +1,4 @@
 .root {
-  --bg: #08162b;
-  --panel: #10213a;
-  --text: #fff0c2;
-  --frame: #ffe45c;
-  --action: #f46b59;
-  --mint: #73edb5;
-  --pixel: var(--font-pixel), ui-monospace, monospace;
-
   position: fixed;
   inset: 0;
   display: grid;
@@ -15,46 +7,9 @@
   gap: 12px 18px;
   padding: 14px 18px 18px;
   overflow: hidden;
-  background: var(--bg);
-  color: var(--text);
+  background: #08162b;
+  color: #fff0c2;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-
-.scanlines::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: repeating-linear-gradient(to bottom, rgb(0 0 0 / 9%) 0 1px, transparent 1px 3px);
-}
-
-.header {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-}
-
-.stripes {
-  flex: 1;
-  max-width: 190px;
-  height: 14px;
-  background: linear-gradient(to bottom, var(--mint) 0 22%, transparent 22% 39%, var(--text) 39% 61%, transparent 61% 78%, var(--action) 78% 100%);
-}
-
-.title {
-  margin: 0;
-  color: var(--text);
-  font-family: var(--pixel);
-  font-size: 16px;
-  font-weight: 400;
-  line-height: 1.5;
-  letter-spacing: 0.02em;
-  text-shadow: 3px 3px 0 var(--action);
-  text-transform: uppercase;
-  white-space: nowrap;
-  transform: skewX(-8deg);
 }
 
 .stage {
@@ -69,40 +24,4 @@
 .globe {
   flex: 1;
   align-self: stretch;
-}
-
-.caption {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin: 4px;
-  padding: 9px 14px;
-  background: var(--panel);
-  font-family: var(--pixel);
-  font-size: 8px;
-  text-transform: uppercase;
-  white-space: nowrap;
-  box-shadow:
-    0 -4px 0 0 var(--frame),
-    0 4px 0 0 var(--frame),
-    -4px 0 0 0 var(--frame),
-    4px 0 0 0 var(--frame);
-}
-
-.captionRoute {
-  color: var(--frame);
-}
-
-.captionArrow {
-  color: var(--action);
-}
-
-@media (min-width: 1200px) {
-  .title {
-    font-size: 24px;
-  }
-
-  .caption {
-    font-size: 16px;
-  }
 }
