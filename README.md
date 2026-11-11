@@ -21,6 +21,18 @@ in `www/app`.
 - **App code:** `www/app` — pages, layouts, components
 - **Env:** `.env.template` + `.env.rig`, generated into `.env` by `rig env`
 
+### Voxel globe
+
+- **`/trip`** uses the voxel interface for the whole view: title bar, travel
+  directive, globe and the "Här är du" panel with the street view. The globe
+  and the directive follow the shared timeline in `www/lib/timeline.ts`.
+- **`/globe`** — standalone demo on its own clock, keyboard only
+  (space, arrow keys, `+`/`-`, `N`/`B`, `F`, `R`, `C`).
+- **`/globe/assets`** — contact sheet of every voxel model.
+- **Code:** scene and components in `www/components/globe`, voxel engine and
+  models in `www/lib/voxel`, route and sights in `www/lib/globe/journey.ts`.
+- `www/components/TripGlobe.tsx` is no longer used.
+
 
 <!-- rig:start -->
 <!-- Written by 'rig self update'. Change it in the rig, not here. -->

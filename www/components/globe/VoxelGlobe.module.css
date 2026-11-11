@@ -1,0 +1,106 @@
+.stage {
+  --bg: #08162b;
+  --panel: #10213a;
+  --text: #fff0c2;
+  --frame: #ffe45c;
+  --action: #f46b59;
+  --muted: #a9b4c6;
+  --pixel: var(--font-pixel), ui-monospace, monospace;
+
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  container-type: inline-size;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.labels {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.sightLabel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 4px 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--pixel);
+  font-size: 8px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow:
+    0 -2px 0 0 var(--frame),
+    0 2px 0 0 var(--frame),
+    -2px 0 0 0 var(--frame),
+    2px 0 0 0 var(--frame);
+  will-change: transform;
+}
+
+.hereLabel {
+  background: var(--action);
+  color: var(--bg);
+  box-shadow:
+    0 -2px 0 0 var(--text),
+    0 2px 0 0 var(--text),
+    -2px 0 0 0 var(--text),
+    2px 0 0 0 var(--text);
+}
+
+.hints {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+  list-style: none;
+}
+
+.hints kbd {
+  color: var(--frame);
+  font-family: var(--pixel);
+  font-size: 8px;
+}
+
+.status {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  margin: 0;
+  padding: 3px 10px;
+  background: rgb(8 22 43 / 85%);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.3;
+  text-align: center;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+/* In a small panel the key hints would cover the globe. */
+@container (max-width: 400px) {
+  .hints {
+    display: none;
+  }
+}

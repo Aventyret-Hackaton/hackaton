@@ -1,0 +1,34 @@
+.header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.stripes {
+  flex: 1;
+  max-width: 190px;
+  height: 14px;
+  background: linear-gradient(to bottom, #73edb5 0 22%, transparent 22% 39%, #fff0c2 39% 61%, transparent 61% 78%, #f46b59 78% 100%);
+}
+
+.title {
+  margin: 0;
+  color: #fff0c2;
+  font-family: var(--font-pixel), ui-monospace, monospace;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  text-shadow: 3px 3px 0 #f46b59;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transform: skewX(-8deg);
+}
+
+@media (min-width: 1200px) {
+  .title {
+    font-size: 24px;
+  }
+}
