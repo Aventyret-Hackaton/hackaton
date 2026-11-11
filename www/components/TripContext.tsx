@@ -1,24 +1,73 @@
 'use client';
 
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import type { Place } from '@/lib/places';
 
-export type Trip = {
-  origin: Place;
-  destination: Place;
+type TripPlaces = {
+  origin: Place | null;
+  destination: Place | null;
 };
 
-type TripContextValue = {
-  trip: Trip | null;
-  setTrip: (trip: Trip | null) => void;
+type TripContextValue = TripPlaces & {
+  // False until the places have been read from session storage.
+  isLoaded: boolean;
+  setOrigin: (place: Place | null) => void;
+  setDestination: (place: Place | null) => void;
 };
+
+const STORAGE_KEY = 'trip-places';
+const EMPTY_PLACES: TripPlaces = { origin: null, destination: null };
 
 const TripContext = createContext<TripContextValue | null>(null);
 
+const parsePlace = (value: unknown): Place | null => {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const { placeId, address, latitude, longitude } = value as Record<string, unknown>;
+  const isPlace = typeof placeId === 'string' && typeof address === 'string' && typeof latitude === 'number' && typeof longitude === 'number';
+  return isPlace ? { placeId, address, latitude, longitude } : null;
+};
+
+const readStoredPlaces = (): TripPlaces => {
+  try {
+    const stored: unknown = JSON.parse(window.sessionStorage.getItem(STORAGE_KEY) ?? 'null');
+    const { origin, destination } = (stored ?? {}) as Record<string, unknown>;
+    return { origin: parsePlace(origin), destination: parsePlace(destination) };
+  } catch {
+    return EMPTY_PLACES;
+  }
+};
+
+const storePlaces = (places: TripPlaces): void => {
+  try {
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(places));
+  } catch {
+    // Storage can be unavailable, the trip then only lives in memory.
+  }
+};
+
 export const TripProvider = ({ children }: { children: React.ReactNode }): React.JSX.Element => {
-  const [trip, setTrip] = useState<Trip | null>(null);
-  const value = useMemo(() => ({ trip, setTrip }), [trip]);
+  const [places, setPlaces] = useState<TripPlaces>(EMPTY_PLACES);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Storage is read after mount so the server and client render the same markup.
+  useEffect(() => {
+    setPlaces(readStoredPlaces());
+    setIsLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (isLoaded) {
+      storePlaces(places);
+    }
+  }, [places, isLoaded]);
+
+  const setOrigin = useCallback((origin: Place | null): void => setPlaces((previous) => ({ ...previous, origin })), []);
+  const setDestination = useCallback((destination: Place | null): void => setPlaces((previous) => ({ ...previous, destination })), []);
+
+  const value = useMemo(() => ({ ...places, isLoaded, setOrigin, setDestination }), [places, isLoaded, setOrigin, setDestination]);
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;
 };
 

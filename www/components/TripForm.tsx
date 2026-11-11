@@ -1,23 +1,17 @@
 'use client';
 
-import { useState } from 'react';
-
 import { useRouter } from 'next/navigation';
 
 import { PlaceAutocomplete } from '@/components/PlaceAutocomplete';
 import { useTrip } from '@/components/TripContext';
-import type { Place } from '@/lib/places';
 
 export const TripForm = (): React.JSX.Element => {
   const router = useRouter();
-  const { setTrip } = useTrip();
-  const [origin, setOrigin] = useState<Place | null>(null);
-  const [destination, setDestination] = useState<Place | null>(null);
+  const { origin, destination, isLoaded, setOrigin, setDestination } = useTrip();
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     if (origin && destination) {
-      setTrip({ origin, destination });
       router.push('/trip');
     }
   };
@@ -25,13 +19,16 @@ export const TripForm = (): React.JSX.Element => {
   return (
     <>
       <h1>Vart vill du?</h1>
-      <form onSubmit={handleSubmit}>
-        <PlaceAutocomplete label="Från" onChange={setOrigin} />
-        <PlaceAutocomplete label="Till" onChange={setDestination} />
-        <button type="submit" disabled={!origin || !destination}>
-          Planera resa
-        </button>
-      </form>
+      {/* The fields mount once stored places are known, so they start prefilled. */}
+      {isLoaded && (
+        <form onSubmit={handleSubmit}>
+          <PlaceAutocomplete label="Från" initialPlace={origin} onChange={setOrigin} />
+          <PlaceAutocomplete label="Till" initialPlace={destination} onChange={setDestination} />
+          <button type="submit" disabled={!origin || !destination}>
+            Planera resa
+          </button>
+        </form>
+      )}
     </>
   );
 };

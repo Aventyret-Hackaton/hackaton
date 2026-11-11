@@ -9,22 +9,22 @@ import { TripView } from '@/components/TripView';
 
 export default function TripPage(): React.JSX.Element | null {
   const router = useRouter();
-  const { trip } = useTrip();
+  const { origin, destination, isLoaded } = useTrip();
+  const isMissingPlaces = isLoaded && (!origin || !destination);
 
-  // The trip only lives in memory, so a reload sends the user back to the form.
   useEffect(() => {
-    if (!trip) {
+    if (isMissingPlaces) {
       router.replace('/');
     }
-  }, [trip, router]);
+  }, [isMissingPlaces, router]);
 
-  if (!trip) {
+  if (!origin || !destination) {
     return null;
   }
 
   return (
     <main>
-      <TripView origin={trip.origin} destination={trip.destination} onReset={() => router.push('/')} />
+      <TripView origin={origin} destination={destination} onReset={() => router.push('/')} />
     </main>
   );
 }

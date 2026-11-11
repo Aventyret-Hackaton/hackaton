@@ -6,14 +6,15 @@ import type { Place, PlaceSuggestion } from '@/lib/places';
 
 type PlaceAutocompleteProps = {
   label: string;
+  initialPlace?: Place | null;
   onChange: (place: Place | null) => void;
 };
 
 const DEBOUNCE_MS = 250;
 
-export const PlaceAutocomplete = ({ label, onChange }: PlaceAutocompleteProps): React.JSX.Element => {
+export const PlaceAutocomplete = ({ label, initialPlace, onChange }: PlaceAutocompleteProps): React.JSX.Element => {
   const id = useId();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialPlace?.address ?? '');
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [error, setError] = useState<string | null>(null);
