@@ -17,7 +17,7 @@ import { ARRIVAL_DAY, JOURNEY_SECONDS, LEGS, locateJourney, STOCKHOLM } from '@/
 import { JOURNEY_TRACKS, trackPoint } from '@/lib/globe/track';
 import type { Place } from '@/lib/places';
 import { estimateStreetLegs, type StreetLegs } from '@/lib/streetLegs';
-import { getGlobeProgress, getTimelineState, type Timeline, TRIP_SPEEDS, type TripPhase, withSpeed } from '@/lib/timeline';
+import { getEffectiveSpeed, getGlobeProgress, getNextSpeed, getTimelineState, type Timeline, TRIP_SPEEDS, type TripPhase, withSpeed } from '@/lib/timeline';
 import { FLAGS_MODEL } from '@/lib/voxel/models';
 
 import type { Traveller } from './streetScene';
@@ -53,10 +53,11 @@ const fetchStreetLegs = async (origin: Place, destination: Place, signal: AbortS
 };
 
 // The street legs in Stockholm wrap around the legs on the globe.
-const buildSteps = ({ exit, entry }: StreetLegs): readonly DirectiveStep[] => [
+const buildSteps = ({ exit }: StreetLegs): readonly DirectiveStep[] => [
   { id: 'street-out', model: FLAGS_MODEL, time: 'Dag 1', mode: `Lämnar Stockholm · utfart ${exit.name}`, instruction: 'Åt fel håll.' },
+  { id: 'jetty', model: FLAGS_MODEL, time: 'Dag 1', mode: 'Ta dig till en brygga', instruction: 'Du behöver en båt.' },
   ...LEG_STEPS,
-  { id: 'street-in', model: FLAGS_MODEL, time: `Dag ${ARRIVAL_DAY}`, mode: `Tillbaka i Stockholm · infart ${entry.name}`, instruction: 'Sista biten.' }
+  { id: 'street-in', model: FLAGS_MODEL, time: `Dag ${ARRIVAL_DAY}`, mode: 'Tillbaka i Stockholm · från Slussen', instruction: 'Sista biten.' }
 ];
 
 // Where the traveller is, and on what, for the street view.
@@ -105,6 +106,7 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
             elapsedSeconds: 0,
             speed: TRIP_SPEEDS[0],
             outboundSeconds: legs.outbound.durationSeconds,
+            jettySeconds: legs.jetty.durationSeconds,
             globeSeconds: JOURNEY_SECONDS,
             inboundSeconds: legs.inbound.durationSeconds
           }
@@ -115,7 +117,7 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
     return (): void => controller.abort();
   }, [origin, destination]);
 
-  // S steps the speed up one notch, and back to real time after the fastest.
+  // S steps the speed up one notch, and back to real time after the fastest allowed.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       const modified = event.metaKey || event.ctrlKey || event.altKey;
@@ -127,18 +129,19 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
         if (!previous) {
           return previous;
         }
-        const next = TRIP_SPEEDS[(TRIP_SPEEDS.findIndex((speed) => speed === previous.timeline.speed) + 1) % TRIP_SPEEDS.length];
-        return { ...previous, timeline: withSpeed(previous.timeline, next, now) };
+        const { timeline } = previous;
+        return { ...previous, timeline: withSpeed(timeline, getNextSpeed(timeline, getTimelineState(timeline, now).phase), now) };
       });
     };
     window.addEventListener('keydown', onKeyDown);
     return (): void => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const hints: readonly KeyHint[] = [['S', `snabbare · nu ${formatSpeed(trip?.timeline.speed ?? TRIP_SPEEDS[0])}`], ...SCANLINE_HINT];
+  const hints: readonly KeyHint[] = [['S', `snabbare · nu ${formatSpeed(trip ? getEffectiveSpeed(trip.timeline, phase) : TRIP_SPEEDS[0])}`], ...SCANLINE_HINT];
   const stepByPhase: Record<TripPhase, number | null> = {
     outbound: 0,
-    globe: 1 + legIndex,
+    jetty: 1,
+    globe: 2 + legIndex,
     inbound: steps.length - 1,
     arrived: null
   };

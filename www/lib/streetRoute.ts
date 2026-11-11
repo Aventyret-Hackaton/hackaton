@@ -1,6 +1,6 @@
-import { type Coordinates, pickGateways } from '@/lib/geo';
+import type { Coordinates } from '@/lib/geo';
 import { PlacesError } from '@/lib/places';
-import type { StreetLeg, StreetLegs } from '@/lib/streetLegs';
+import { planStreetLegs, type StreetLeg, type StreetLegs } from '@/lib/streetLegs';
 
 type ComputeRoutesResponse = {
   routes?: { duration?: string }[];
@@ -45,7 +45,7 @@ const fetchDrivingLeg = async (from: Coordinates, to: Coordinates): Promise<Stre
 };
 
 export const getStreetLegs = async (origin: Coordinates, destination: Coordinates): Promise<StreetLegs> => {
-  const { exit, entry } = pickGateways(origin, destination);
-  const [outbound, inbound] = await Promise.all([fetchDrivingLeg(origin, exit), fetchDrivingLeg(entry, destination)]);
-  return { exit, entry, outbound, inbound };
+  const plan = planStreetLegs(origin, destination);
+  const [outbound, jetty, inbound] = await Promise.all([fetchDrivingLeg(...plan.outbound), fetchDrivingLeg(...plan.jetty), fetchDrivingLeg(...plan.inbound)]);
+  return { exit: plan.exit, outbound, jetty, inbound };
 };

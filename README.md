@@ -27,7 +27,11 @@ in `www/app`.
   directive, globe and the "Här är du" panel with the street view. The globe,
   the directive and the street view follow the shared timeline in
   `www/lib/timeline.ts`, which plays the whole trip in real time. `S` steps the speed
-  up through 100x to 10000000x and back to real time.
+  up through 100x to 10000000x and back to real time. The last leg, from
+  Slussen to the destination, is capped at 100x.
+- The street legs in Stockholm (`www/lib/streetLegs.ts`) go from the origin to
+  an exit, on to the nearest jetty, and at the end from Slussen to the
+  destination.
 - The street view is a mocked voxel scene (`www/components/streetScene.ts`)
   that takes its terrain from the globe under the traveller.
 - **`/globe`** — standalone demo on its own clock, keyboard only

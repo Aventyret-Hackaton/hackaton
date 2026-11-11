@@ -41,9 +41,22 @@ const angleBetween = (a: number, b: number): number => Math.abs(((a - b + 540) %
 const closestGateway = (from: Coordinates, direction: number): Gateway =>
   GATEWAYS.reduce((best, gateway) => (angleBetween(bearing(from, gateway), direction) < angleBetween(bearing(from, best), direction) ? gateway : best));
 
-// The long way leaves the origin heading away from the destination, and
-// reaches the destination from the side facing away from the origin.
-export const pickGateways = (origin: Coordinates, destination: Coordinates): { exit: Gateway; entry: Gateway } => ({
-  exit: closestGateway(origin, (bearing(origin, destination) + 180) % 360),
-  entry: closestGateway(destination, (bearing(destination, origin) + 180) % 360)
-});
+// The long way leaves the origin heading away from the destination.
+export const pickExit = (origin: Coordinates, destination: Coordinates): Gateway => closestGateway(origin, (bearing(origin, destination) + 180) % 360);
+
+// Where the last leg on the globe ends.
+export const SLUSSEN: Coordinates = { latitude: 59.3195, longitude: 18.0722 };
+
+// Approximate jetties in waters that connect to Mälaren or the Baltic Sea.
+const JETTIES: Coordinates[] = [
+  { latitude: 59.2647, longitude: 17.8836 },
+  { latitude: 59.285, longitude: 17.893 },
+  { latitude: 59.301, longitude: 18.05 },
+  { latitude: 59.3035, longitude: 18.096 },
+  { latitude: 59.238, longitude: 18.3 },
+  { latitude: 59.317, longitude: 18.228 },
+  { latitude: 59.3895, longitude: 18.02 },
+  { latitude: 59.405, longitude: 18.005 }
+];
+
+export const nearestJetty = (from: Coordinates): Coordinates => JETTIES.reduce((best, jetty) => (distanceMeters(from, jetty) < distanceMeters(from, best) ? jetty : best));

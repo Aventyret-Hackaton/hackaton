@@ -1,7 +1,9 @@
-export type TripPhase = 'outbound' | 'globe' | 'inbound' | 'arrived';
+export type TripPhase = 'outbound' | 'jetty' | 'globe' | 'inbound' | 'arrived';
 
 // Trip seconds per real second, 1 is real time.
 export const TRIP_SPEEDS = [1, 100, 10000, 100000, 1000000, 10000000] as const;
+// The last leg, from Slussen, never plays faster than this.
+const INBOUND_MAX_SPEED = 100;
 
 export type Timeline = {
   // performance.now() timestamp of when the current speed was set.
@@ -10,6 +12,7 @@ export type Timeline = {
   elapsedSeconds: number;
   speed: number;
   outboundSeconds: number;
+  jettySeconds: number;
   globeSeconds: number;
   inboundSeconds: number;
 };
@@ -20,7 +23,30 @@ export type TimelineState = {
   progress: number;
 };
 
-const getElapsedSeconds = ({ startTime, elapsedSeconds, speed }: Timeline, now: number): number => elapsedSeconds + Math.max((now - startTime) / 1000, 0) * speed;
+const getElapsedSeconds = ({ startTime, elapsedSeconds, speed, outboundSeconds, jettySeconds, globeSeconds }: Timeline, now: number): number => {
+  const realSeconds = Math.max((now - startTime) / 1000, 0);
+  const inboundStart = outboundSeconds + jettySeconds + globeSeconds;
+  const inboundSpeed = Math.min(speed, INBOUND_MAX_SPEED);
+  if (elapsedSeconds >= inboundStart) {
+    return elapsedSeconds + realSeconds * inboundSpeed;
+  }
+  const elapsed = elapsedSeconds + realSeconds * speed;
+  if (elapsed <= inboundStart) {
+    return elapsed;
+  }
+  // Past Slussen the capped speed applies to the rest of the real time.
+  return inboundStart + (realSeconds - (inboundStart - elapsedSeconds) / speed) * inboundSpeed;
+};
+
+// The speed the trip actually plays at in the given phase.
+export const getEffectiveSpeed = ({ speed }: Timeline, phase: TripPhase | null): number => (phase === 'inbound' ? Math.min(speed, INBOUND_MAX_SPEED) : speed);
+
+// The next speed up from the current one, starting over after the fastest allowed.
+export const getNextSpeed = (timeline: Timeline, phase: TripPhase | null): number => {
+  const current = getEffectiveSpeed(timeline, phase);
+  const next = TRIP_SPEEDS.find((speed) => speed > current);
+  return next === undefined || (phase === 'inbound' && next > INBOUND_MAX_SPEED) ? TRIP_SPEEDS[0] : next;
+};
 
 // The same trip continuing from where it is, at another speed.
 export const withSpeed = (timeline: Timeline, speed: number, now: number): Timeline => ({
@@ -31,10 +57,11 @@ export const withSpeed = (timeline: Timeline, speed: number, now: number): Timel
 });
 
 export const getTimelineState = (timeline: Timeline, now: number): TimelineState => {
-  const { outboundSeconds, globeSeconds, inboundSeconds } = timeline;
+  const { outboundSeconds, jettySeconds, globeSeconds, inboundSeconds } = timeline;
   let elapsed = getElapsedSeconds(timeline, now);
   const phases: [TripPhase, number][] = [
     ['outbound', outboundSeconds],
+    ['jetty', jettySeconds],
     ['globe', globeSeconds],
     ['inbound', inboundSeconds]
   ];
@@ -50,7 +77,7 @@ export const getTimelineState = (timeline: Timeline, now: number): TimelineState
 
 // Share of the long way around the globe that has been covered.
 export const getGlobeProgress = ({ phase, progress }: TimelineState): number => {
-  if (phase === 'outbound') {
+  if (phase === 'outbound' || phase === 'jetty') {
     return 0;
   }
   return phase === 'globe' ? progress : 1;
