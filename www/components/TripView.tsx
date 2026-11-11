@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { StreetView } from '@/components/StreetView';
+import { useTrip } from '@/components/TripContext';
 import { TripGlobe } from '@/components/TripGlobe';
 import type { Place } from '@/lib/places';
+import { createLongRoute } from '@/lib/route';
 import type { StreetLegs } from '@/lib/streetRoute';
-import type { Timeline } from '@/lib/timeline';
+import { formatSpeed, SPEEDS, type Timeline, withSpeed } from '@/lib/timeline';
 
 import styles from './TripView.module.css';
 
@@ -21,7 +23,8 @@ type TripData = {
   timeline: Timeline;
 };
 
-const GLOBE_SECONDS = 60;
+// Assumed driving speed for the long way around the globe.
+const GLOBE_SPEED_KMH = 80;
 
 const fetchStreetLegs = async (origin: Place, destination: Place, signal: AbortSignal): Promise<StreetLegs> => {
   const params = new URLSearchParams({
@@ -38,19 +41,25 @@ const fetchStreetLegs = async (origin: Place, destination: Place, signal: AbortS
 };
 
 export const TripView = ({ origin, destination, onReset }: TripViewProps): React.JSX.Element => {
+  const { speed, setSpeed } = useTrip();
   const [trip, setTrip] = useState<TripData | null>(null);
+  // Lets the trip start at the stored speed without restarting when it changes.
+  const speedRef = useRef(speed);
 
   useEffect(() => {
     const controller = new AbortController();
+    const globeSeconds = (createLongRoute(origin, destination).distanceKm / GLOBE_SPEED_KMH) * 3600;
     // The clock starts once the street legs are known, or have failed.
     const start = (legs: StreetLegs | null): void => {
       if (!controller.signal.aborted) {
         setTrip({
           legs,
           timeline: {
-            startTime: performance.now(),
+            anchorTime: performance.now(),
+            anchorElapsed: 0,
+            speed: speedRef.current,
             outboundSeconds: legs?.outbound.durationSeconds ?? 0,
-            globeSeconds: GLOBE_SECONDS,
+            globeSeconds,
             inboundSeconds: legs?.inbound.durationSeconds ?? 0
           }
         });
@@ -60,6 +69,22 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
     return (): void => controller.abort();
   }, [origin, destination]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+      const nextSpeed = SPEEDS[SPEEDS.indexOf(speedRef.current) + step];
+      if (step === 0 || nextSpeed === undefined) {
+        return;
+      }
+      event.preventDefault();
+      speedRef.current = nextSpeed;
+      setSpeed(nextSpeed);
+      setTrip((previous) => previous && { ...previous, timeline: withSpeed(previous.timeline, nextSpeed, performance.now()) });
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return (): void => window.removeEventListener('keydown', handleKeyDown);
+  }, [setSpeed]);
+
   return (
     <div className={styles.trip}>
       <header className={styles.header}>
@@ -67,6 +92,7 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
         <button type="button" onClick={onReset}>
           En gång till. Av oklara skäl.
         </button>
+        <p>Hastighet: {formatSpeed(speed)} (ändra med vänster- och högerpil)</p>
       </header>
 
       <section className={styles.panel}>

@@ -17,14 +17,14 @@
 /* Moves towards the vanishing point for as long as the frame is on screen. */
 .zooming {
   opacity: 1;
-  animation: zoom calc(var(--frame-seconds) + 1.5s) linear forwards;
+  animation: zoom calc(var(--frame-seconds) + var(--fade-seconds)) linear forwards;
 }
 
 /* The newest frame fades in on top of the previous one, which keeps zooming. */
 .visible {
   animation:
-    zoom calc(var(--frame-seconds) + 1.5s) linear forwards,
-    fade-in 1.5s ease-in-out;
+    zoom calc(var(--frame-seconds) + var(--fade-seconds)) linear forwards,
+    fade-in var(--fade-seconds) ease-in-out;
 }
 
 @keyframes fade-in {

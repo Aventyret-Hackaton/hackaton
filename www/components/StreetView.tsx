@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import type { StreetFrame, StreetLegs } from '@/lib/streetRoute';
-import { getTimelineState, type Timeline, type TimelineState } from '@/lib/timeline';
+import { getStreetSpeed, getTimelineState, type Timeline, type TimelineState } from '@/lib/timeline';
 
 import styles from './StreetView.module.css';
 
@@ -21,6 +21,7 @@ type View = {
 const TICK_MS = 100;
 // Number of upcoming frames that are loaded ahead of time.
 const PRELOAD_FRAMES = 3;
+const MAX_FADE_SECONDS = 1.5;
 
 const getFrameUrl = ({ latitude, longitude, heading }: StreetFrame): string => {
   const params = new URLSearchParams({
@@ -76,7 +77,9 @@ export const StreetView = ({ legs, timeline }: StreetViewProps): React.JSX.Eleme
   const isOutbound = view.phase === 'outbound';
   const leg = isOutbound ? legs?.outbound : legs?.inbound;
   const frames = leg?.frames ?? [];
-  const frameSeconds = leg && frames.length > 0 ? leg.durationSeconds / frames.length : 0;
+  // Real seconds each frame is on screen at the current speed.
+  const frameSeconds = leg && frames.length > 0 ? leg.durationSeconds / frames.length / getStreetSpeed(timeline) : 0;
+  const fadeSeconds = Math.min(MAX_FADE_SECONDS, frameSeconds / 2);
   const urls = frames.map(getFrameUrl);
   // Fall back to the latest frame that has imagery.
   const visibleIndex = urls.findLastIndex((url, index) => index <= view.frameIndex && !failedUrls.has(url));
@@ -102,7 +105,7 @@ export const StreetView = ({ legs, timeline }: StreetViewProps): React.JSX.Eleme
             <img
               key={index}
               className={`${styles.frame} ${isShown ? styles.zooming : ''} ${index === visibleIndex ? styles.visible : ''}`}
-              style={{ '--frame-seconds': `${frameSeconds}s` } as React.CSSProperties}
+              style={{ '--frame-seconds': `${frameSeconds}s`, '--fade-seconds': `${fadeSeconds}s` } as React.CSSProperties}
               src={url}
               alt=""
               onError={() => handleError(url)}

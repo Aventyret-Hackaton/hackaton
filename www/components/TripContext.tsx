@@ -3,10 +3,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import type { Place } from '@/lib/places';
+import { SPEEDS } from '@/lib/timeline';
 
 type TripPlaces = {
   origin: Place | null;
   destination: Place | null;
+  speed: number;
 };
 
 type TripContextValue = TripPlaces & {
@@ -14,10 +16,11 @@ type TripContextValue = TripPlaces & {
   isLoaded: boolean;
   setOrigin: (place: Place | null) => void;
   setDestination: (place: Place | null) => void;
+  setSpeed: (speed: number) => void;
 };
 
 const STORAGE_KEY = 'trip-places';
-const EMPTY_PLACES: TripPlaces = { origin: null, destination: null };
+const EMPTY_PLACES: TripPlaces = { origin: null, destination: null, speed: 1 };
 
 const TripContext = createContext<TripContextValue | null>(null);
 
@@ -33,8 +36,12 @@ const parsePlace = (value: unknown): Place | null => {
 const readStoredPlaces = (): TripPlaces => {
   try {
     const stored: unknown = JSON.parse(window.sessionStorage.getItem(STORAGE_KEY) ?? 'null');
-    const { origin, destination } = (stored ?? {}) as Record<string, unknown>;
-    return { origin: parsePlace(origin), destination: parsePlace(destination) };
+    const { origin, destination, speed } = (stored ?? {}) as Record<string, unknown>;
+    return {
+      origin: parsePlace(origin),
+      destination: parsePlace(destination),
+      speed: typeof speed === 'number' && SPEEDS.includes(speed) ? speed : 1
+    };
   } catch {
     return EMPTY_PLACES;
   }
@@ -67,7 +74,9 @@ export const TripProvider = ({ children }: { children: React.ReactNode }): React
   const setOrigin = useCallback((origin: Place | null): void => setPlaces((previous) => ({ ...previous, origin })), []);
   const setDestination = useCallback((destination: Place | null): void => setPlaces((previous) => ({ ...previous, destination })), []);
 
-  const value = useMemo(() => ({ ...places, isLoaded, setOrigin, setDestination }), [places, isLoaded, setOrigin, setDestination]);
+  const setSpeed = useCallback((speed: number): void => setPlaces((previous) => ({ ...previous, speed })), []);
+
+  const value = useMemo(() => ({ ...places, isLoaded, setOrigin, setDestination, setSpeed }), [places, isLoaded, setOrigin, setDestination, setSpeed]);
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;
 };
 

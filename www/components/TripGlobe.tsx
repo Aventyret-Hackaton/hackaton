@@ -43,6 +43,11 @@ const disposeScene = (scene: THREE.Scene): void => {
 
 export const TripGlobe = ({ origin, destination, timeline, className }: TripGlobeProps): React.JSX.Element => {
   const containerRef = useRef<HTMLDivElement>(null);
+  // Read through a ref so a speed change does not rebuild the scene.
+  const timelineRef = useRef(timeline);
+  useEffect(() => {
+    timelineRef.current = timeline;
+  }, [timeline]);
   const [progress, setProgress] = useState(0);
   const route = createLongRoute(origin, destination);
 
@@ -110,7 +115,7 @@ export const TripGlobe = ({ origin, destination, timeline, className }: TripGlob
     let lastReported = -1;
 
     renderer.setAnimationLoop(() => {
-      const state = getTimelineState(timeline, performance.now());
+      const state = getTimelineState(timelineRef.current, performance.now());
       const current = getGlobeProgress(state);
 
       pointAt(current, position);
@@ -141,7 +146,7 @@ export const TripGlobe = ({ origin, destination, timeline, className }: TripGlob
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [origin, destination, timeline]);
+  }, [origin, destination]);
 
   return (
     <div>
