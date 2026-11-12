@@ -64,6 +64,9 @@ export const CITY_TINTS = {
   urban: [COLORS.roofSlate, COLORS.roofDark, COLORS.roofRed, COLORS.roofRed, COLORS.street, COLORS.wallOchre]
 } as const;
 
+// What the ripples on the water lighten it towards: plain ripples, and foam.
+export const WATER_GLINTS = [COLORS.waterLight, COLORS.foam] as const;
+
 type ColorName = keyof typeof COLORS;
 
 const COLOR_NAMES = Object.keys(COLORS) as ColorName[];
@@ -350,13 +353,8 @@ const BRIDGES: readonly Bridge[] = [
 
 type Boat = { at: LatLon; long: boolean; masts?: boolean };
 
-const BOATS: readonly Boat[] = [
-  { at: [59.3218, 18.0815], long: true },
-  { at: [59.3238, 18.047], long: true },
-  { at: [59.3186, 18.107], long: true },
-  { at: [59.3305, 18.0838], long: false },
-  { at: [59.3252, 18.0798], long: false, masts: true }
-];
+// Moored ships. The ones that sail are in harbour.ts.
+const BOATS: readonly Boat[] = [{ at: [59.3252, 18.0798], long: false, masts: true }];
 
 // Start and goal plates, and anything else that wants a clear patch of ground.
 export type CityMarker = { cell: Cell; color: 'mint' | 'pink' };
@@ -445,9 +443,9 @@ export const buildStockholm = (markers: readonly CityMarker[]): BufferGeometry =
   for (let z = 0; z < CITY_DEPTH; z += 1) {
     for (let x = 0; x < CITY_WIDTH; x += 1) {
       const kind = ground[at(x, z)];
+      // The ripples are drawn on top of the water as it moves.
       if (kind === WATER) {
-        const ripple = hash3(x >> 1, z, 3);
-        v.set(x, SEA, z, ripple < 0.035 ? K.foam : ripple < 0.2 ? K.waterLight : K.water);
+        v.set(x, SEA, z, K.water);
         continue;
       }
       const green = kind === PARK || lots[at(x, z)] === 1;

@@ -787,6 +787,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     if (options.getProgress) syncToProgress(options.getProgress());
     else advance(delta);
     city.build();
+    if (!reducedMotion) city.animate(elapsed);
     updateIntro(delta);
     updateDetail();
     locateVehicle();

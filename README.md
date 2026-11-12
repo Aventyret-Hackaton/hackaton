@@ -66,6 +66,10 @@ in `www/app`.
   which has a cut-out where they lie. The city is a hand-drawn voxel map in
   `www/lib/city`, the land around it comes from `region.ts` there, and
   `cityIntro.ts` in `www/components/globe` lets them into the globe.
+- The close-up is alive: ripples drift over the water, vessels sail loops
+  (`www/lib/city/harbour.ts`) and gulls circle over the middle of the view
+  (`www/components/globe/cityLife.ts`). They dissolve with the city when the
+  camera pulls back, and stand still with reduced motion.
 - The walker, the swimmer, the raft, the ride-on mower and the moonwalker have
   a loop of poses each (`sequence` on the model). `www/lib/voxel/posed.ts`
   plays it on the globe and in the street view while the traveller moves. The

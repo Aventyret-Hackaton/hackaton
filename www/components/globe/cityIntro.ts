@@ -16,10 +16,11 @@ import {
 } from 'three';
 
 import { createRegion, type SurfaceLookup } from '@/lib/city/region';
-import { buildStockholm, CITY_GROUND } from '@/lib/city/stockholm';
+import { buildStockholm, CITY_GROUND, WATER_GLINTS } from '@/lib/city/stockholm';
 import { type Cell, cellOf, CITY_DEPTH, CITY_WIDTH } from '@/lib/city/stockholmMap';
 import { DEG, type LatLon } from '@/lib/globe/geo';
 
+import { type CityLife, createCityLife } from './cityLife';
 import { DITHER_GLSL, REGION_GLSL, REGION_RIM } from './dither';
 
 // World size of one cell of the city map.
@@ -56,14 +57,17 @@ const VERTEX_PARS = /* glsl */ `
 uniform float uRegionCell;
 uniform float uRegionCurve;
 varying vec2 vRegion;
+varying vec3 vVoxel;
 `;
 
-// The ground follows the curve of the globe.
+// The ground follows the curve of the globe. Only the ground knows which voxel a pixel is in.
 const VERTEX_MAIN = /* glsl */ `
 #ifdef USE_INSTANCING
   vRegion = (instanceMatrix * vec4(transformed, 1.0)).xz * uRegionCell;
+  vVoxel = vec3(0.0, 9.0, 0.0);
 #else
   vRegion = transformed.xz * uRegionCell;
+  vVoxel = transformed;
   transformed.y -= uRegionCurve * dot(transformed.xz, transformed.xz);
 #endif
 `;
@@ -74,9 +78,32 @@ uniform vec4 uRegionReach;
 uniform float uRegionFront;
 uniform vec4 uRegionInnerReach;
 uniform float uRegionInnerFront;
+uniform float uWaterTime;
+uniform vec3 uWaterLight;
+uniform vec3 uWaterFoam;
 varying vec2 vRegion;
+varying vec3 vVoxel;
 ${DITHER_GLSL}
 ${REGION_GLSL}
+float waterHash(vec2 cell) {
+  return fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+}
+`;
+
+// Water is the lowest layer. Its ripples are dashes that drift along their rows, each row at
+// its own pace, under a slow swell and the odd glint.
+const FRAGMENT_WATER = /* glsl */ `
+if (vVoxel.y < 1.01) {
+  vec2 cell = floor(vVoxel.xz);
+  float pace = 0.5 + 1.5 * waterHash(vec2(cell.y, 7.0));
+  float drift = mod(floor(uWaterTime * pace), 256.0) * (waterHash(vec2(cell.y, 3.0)) < 0.5 ? 1.0 : -1.0);
+  float ripple = waterHash(vec2(floor((cell.x + drift) * 0.5), cell.y));
+  float glint = waterHash(cell + mod(floor(uWaterTime * 2.0), 64.0) * vec2(13.0, 7.0));
+  float swell = step(0.6, sin(cell.x * 0.21 + cell.y * 0.33 - uWaterTime * 0.9));
+  diffuseColor.rgb *= 1.0 + 0.05 * swell;
+  if (ripple < 0.035 || glint < 0.003) diffuseColor.rgb = mix(diffuseColor.rgb, uWaterFoam, 0.85);
+  else if (ripple < 0.2) diffuseColor.rgb = mix(diffuseColor.rgb, uWaterLight, 0.85);
+}
 `;
 
 // A level is drawn inside its own front and outside the front of the finer level within it,
@@ -130,6 +157,8 @@ export type CityIntro = {
   frame: (aspect: number) => CityFraming;
   // Generates one more level of the land around the city, if any is still missing.
   build: () => void;
+  // Moves the water, the vessels and the gulls to where they are after so many seconds.
+  animate: (seconds: number) => void;
   // How far the pull-back has come, from 0 to 1.
   setProgress: (progress: number) => void;
   dispose: () => void;
@@ -187,6 +216,9 @@ export const createCityIntro = ({ origin, destination, exitBearing, entry, route
   const innerFronts = halves.map(() => ({ value: 0 }));
   const materials: Material[] = [];
   const geometries: BufferGeometry[] = [];
+  const waterTime = { value: 0 };
+  const waterLight = { value: new Color(WATER_GLINTS[0]) };
+  const waterFoam = { value: new Color(WATER_GLINTS[1]) };
 
   const dissolving = <T extends Material>(material: T, level: number, cell: number): T => {
     material.onBeforeCompile = (shader): void => {
@@ -197,13 +229,17 @@ export const createCityIntro = ({ origin, destination, exitBearing, entry, route
         uRegionReach: reaches[level],
         uRegionFront: fronts[level],
         uRegionInnerReach: innerReaches[level],
-        uRegionInnerFront: innerFronts[level]
+        uRegionInnerFront: innerFronts[level],
+        uWaterTime: waterTime,
+        uWaterLight: waterLight,
+        uWaterFoam: waterFoam
       });
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `#include <common>\n${VERTEX_PARS}`)
         .replace('#include <begin_vertex>', `#include <begin_vertex>\n${VERTEX_MAIN}`);
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', `#include <common>\n${FRAGMENT_PARS}`)
+        .replace('#include <color_fragment>', `#include <color_fragment>\n${FRAGMENT_WATER}`)
         .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\n${FRAGMENT_DISCARD}`);
     };
     materials.push(material);
@@ -231,6 +267,7 @@ export const createCityIntro = ({ origin, destination, exitBearing, entry, route
   const city = new Mesh(cityGeometry, dissolving(new MeshBasicMaterial({ vertexColors: true }), 0, CITY_CELL));
   city.frustumCulled = false;
   cityGroup.add(city);
+  const life: CityLife = createCityLife(cityGroup, dissolving(new MeshBasicMaterial({ vertexColors: true }), 0, CITY_CELL), CITY_CELL / (2 * radius));
 
   const region = createRegion(CITY_CELL, surface);
   const levels: (Object3D | null)[] = [cityGroup, ...SURROUNDINGS.map(() => null)];
@@ -321,6 +358,9 @@ export const createCityIntro = ({ origin, destination, exitBearing, entry, route
     const z = within((top + bottom) / 2 + ((north - south) * distance) / 2, north * distance, CITY_DEPTH - south * distance);
 
     const target = local([x, z], CITY_GROUND);
+    // Placed here as well, so that everything is in its place even when nothing moves.
+    life.setView(x, z, distance);
+    life.update(waterTime.value);
     anchor.value.set(target.x, target.z);
     halves.forEach(([halfWidth, halfDepth], level) => {
       reaches[level].value.set(halfWidth + target.x, halfWidth - target.x, halfDepth + target.z, halfDepth - target.z);
@@ -342,6 +382,10 @@ export const createCityIntro = ({ origin, destination, exitBearing, entry, route
       buildLevel(next);
       applyProgress();
     },
+    animate: (seconds): void => {
+      waterTime.value = seconds;
+      if (cityGroup.visible) life.update(seconds);
+    },
     setProgress: (value): void => {
       progress = value;
       // Once the camera pulls back every level has to be there.
@@ -349,6 +393,7 @@ export const createCityIntro = ({ origin, destination, exitBearing, entry, route
       applyProgress();
     },
     dispose: (): void => {
+      life.dispose();
       for (const item of [...geometries, ...materials]) item.dispose();
     }
   };
