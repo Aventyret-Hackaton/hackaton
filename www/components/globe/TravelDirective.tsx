@@ -88,7 +88,6 @@ export const TravelDirective = ({ steps, currentStep }: TravelDirectiveProps): R
           );
         })}
       </ol>
-      <p className={styles.footer}>Hålltider · resdag</p>
     </section>
   );
 };

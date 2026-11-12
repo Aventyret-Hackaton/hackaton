@@ -5,7 +5,6 @@
   --text: #fff0c2;
   --frame: #ffe45c;
   --action: #f46b59;
-  --mint: #73edb5;
   --muted: #a9b4c6;
   --pixel: var(--font-pixel), ui-monospace, monospace;
 
@@ -51,16 +50,6 @@
   text-align: center;
 }
 
-.detour {
-  margin: 0;
-  color: var(--text);
-  font-family: var(--pixel);
-  font-size: 8px;
-  font-weight: 400;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-}
-
 .here {
   display: flex;
   flex-direction: column;
@@ -95,36 +84,6 @@
     2px 0 0 0 var(--frame);
 }
 
-.now {
-  display: grid;
-  gap: 8px;
-  margin: 2px;
-  padding: 10px;
-  background: var(--row);
-  box-shadow:
-    0 -2px 0 0 #5d6b82,
-    0 2px 0 0 #5d6b82,
-    -2px 0 0 0 #5d6b82,
-    2px 0 0 0 #5d6b82;
-}
-
-.now dt {
-  margin-bottom: 4px;
-  color: var(--mint);
-  font-family: var(--pixel);
-  font-size: 8px;
-  text-transform: uppercase;
-}
-
-.now dd {
-  margin: 0;
-  font-family: var(--pixel);
-  font-size: 8px;
-  line-height: 1.5;
-  text-transform: uppercase;
-  overflow-wrap: anywhere;
-}
-
 .reset {
   margin: 4px 6px 6px 2px;
   padding: 10px 8px;
@@ -150,8 +109,7 @@
 }
 
 @media (min-width: 1200px) {
-  .hereTitle,
-  .detour {
+  .hereTitle {
     font-size: 16px;
   }
 }
