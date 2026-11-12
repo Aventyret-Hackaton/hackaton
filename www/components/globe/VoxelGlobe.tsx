@@ -23,8 +23,8 @@ type VoxelGlobeProps = {
   underWay?: boolean;
   // Who the globe shows travelling, or null for nobody. Without it the leg decides.
   getTraveller?: () => GlobeTraveller | null;
-  // Replaces the line under the globe that says what is going on.
-  caption?: string;
+  // Replaces the line at the foot of the globe that says what is going on. Null leaves it out.
+  caption?: string | null;
   extraHints?: readonly KeyHint[];
   className?: string;
 };
@@ -192,7 +192,8 @@ export const VoxelGlobe = ({
 
   const leg = LEGS[legIndex];
   const waitingText = driven && underWay ? 'Tillfälligt stillastående.' : 'Tryck på mellanslag för att ge dig av.';
-  const statusText = caption ?? (status.finished ? `Dag ${ARRIVAL_DAY}. Framme. Nu då?` : status.started ? `Nu: ${leg.mode} · ${leg.from} → ${leg.to}` : waitingText);
+  const ownText = status.finished ? `Dag ${ARRIVAL_DAY}. Framme. Nu då?` : status.started ? `Nu: ${leg.mode} · ${leg.from} → ${leg.to}` : waitingText;
+  const statusText = caption === undefined ? ownText : caption;
   const hints = [...(driven ? [] : JOURNEY_HINTS), ...VIEW_HINTS, ...extraHints];
 
   return (
@@ -206,9 +207,11 @@ export const VoxelGlobe = ({
           </li>
         ))}
       </ul>
-      <p className={styles.status} aria-live="polite">
-        {statusText}
-      </p>
+      {statusText && (
+        <p className={styles.status} aria-live="polite">
+          {statusText}
+        </p>
+      )}
     </div>
   );
 };

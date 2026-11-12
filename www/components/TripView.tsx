@@ -189,10 +189,7 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
   };
   const currentStep = phase && started ? stepByPhase[phase] : null;
   const step = currentStep === null ? undefined : steps[currentStep];
-  const nextStep = currentStep === null ? undefined : steps[currentStep + 1];
   const idleText = phase === 'arrived' ? ARRIVED_TEXT : 'Väntar på avfärd';
-  // On the street legs in Stockholm the globe has no leg of its own to name.
-  const globeCaption = step && phase !== 'globe' ? `Nu: ${step.mode}` : undefined;
 
   return (
     <div className={`${pixelFont.variable} ${styles.root}`}>
@@ -211,14 +208,13 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
             places={places}
             underWay={started}
             getTraveller={(): GlobeTraveller | null => getGlobeTraveller(trip.timeline)}
-            caption={globeCaption}
+            caption={started ? null : undefined}
             getProgress={(): number => getGlobeProgress(getTimelineState(trip.timeline, performance.now()))}
           />
         ) : (
           <p className={styles.loading}>Alla har en teori. Ingen är framme.</p>
         )}
-        <h2 className={styles.detour}>En liten omväg</h2>
-        <RouteCaption detail={`${origin.address} → ${destination.address}`} />
+        <RouteCaption places={[places.origin.name, places.destination.name]} />
       </section>
 
       <section className={styles.here} aria-label="Här är du">
@@ -228,18 +224,6 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
             <StreetView title={step?.mode ?? idleText} detail={step?.instruction} getTraveller={(aheadSeconds: number): Traveller => getTraveller(trip.timeline, aheadSeconds)} />
           )}
         </div>
-        <dl className={styles.now}>
-          <div>
-            <dt>Nu</dt>
-            <dd>{step?.mode ?? idleText}</dd>
-          </div>
-          {nextStep && (
-            <div>
-              <dt>Nästa byte</dt>
-              <dd>{nextStep.mode}</dd>
-            </div>
-          )}
-        </dl>
         <button type="button" className={styles.reset} onClick={onReset}>
           En gång till. Av oklara skäl.
         </button>
