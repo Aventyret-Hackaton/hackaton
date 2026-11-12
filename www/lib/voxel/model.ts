@@ -6,6 +6,7 @@ import type { VoxelGrid } from './grid';
 import { buildVoxelGeometry } from './mesher';
 
 const MODEL_JITTER = 0.09;
+export const OUTLINE_COLOR = 0xffffff;
 
 // A loop of poses that the model goes through while it travels.
 export type VoxelSequence = {
@@ -47,6 +48,15 @@ const build = (def: VoxelModelDef, planted: boolean): BuiltModel => {
 export const buildModel = (def: VoxelModelDef): BuiltModel => build(def, false);
 
 export const buildPlantedModel = (def: VoxelModelDef): BuiltModel => build(def, true);
+
+// A shell one voxel outside the model, placed like it. Drawn inside out, it shows as an outline around the model.
+export const buildOutline = ({ paint }: VoxelModelDef, { shift }: BuiltModel): BufferGeometry => {
+  const grid = createVoxelGrid();
+  paint(grid);
+  const shell = createVoxelGrid();
+  for (const { x, y, z } of grid.cells()) shell.fill(x - 1, x + 1, y - 1, y + 1, z - 1, z + 1, OUTLINE_COLOR);
+  return buildVoxelGeometry(shell.cells(), shell.has, 0).translate(shift.x, shift.y, shift.z);
+};
 
 // One pose of the sequence, placed like the still model so that nothing jumps between poses.
 export const buildPose = ({ paint }: VoxelSequence, frame: number, { shift }: BuiltModel): BufferGeometry =>

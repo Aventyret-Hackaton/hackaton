@@ -1,9 +1,9 @@
 import {
+  BackSide,
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
   Color,
-  DirectionalLight,
   Group,
   InstancedMesh,
   Matrix4,
@@ -30,7 +30,7 @@ import { DEFAULT_JOURNEY_PLAN, type JourneyPlan, locateJourney } from '@/lib/glo
 import { type Track, trackPoint } from '@/lib/globe/track';
 import { hash3 } from '@/lib/voxel/hash';
 import { buildVoxelGeometry } from '@/lib/voxel/mesher';
-import { buildModel, buildPlantedModel } from '@/lib/voxel/model';
+import { buildModel, buildOutline, buildPlantedModel, OUTLINE_COLOR } from '@/lib/voxel/model';
 import { GOAL_FLAG_MODEL, SIGHT_MODEL_DEFS, START_FLAG_MODEL, VEHICLE_MODELS } from '@/lib/voxel/models';
 import { createPosedModel, type PosedModel } from '@/lib/voxel/posed';
 
@@ -89,13 +89,11 @@ const INTRO_ELEVATION = 48 * DEG;
 const CITY_WATER_LIFT = 0.35;
 // The flags are this much larger in the close-up than their size on the globe gives.
 const CLOSE_FLAG_SCALE = 1.5;
+// Shares of the pull-back at which the names in the city are gone and those on the globe appear.
 const CITY_LABELS_END = 0.2;
 const GLOBE_LABELS_START = 0.88;
 // Shares of the pull-back between which the traveller grows into view.
 const TRAVELLER_APPEARS = [0.3, 0.5];
-const CLOSE_LIGHT = 2.2;
-// Shares of the pull-back: when the extra light on the flags is gone, and the labels change over.
-const CLOSE_LIGHT_END = 0.5;
 const LABEL_RANGE = Math.cos(32 * DEG);
 const LABELS_SHOWN = 2;
 
@@ -250,10 +248,6 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
 
   const scene = new Scene();
   addVoxelLights(scene);
-  // In the close-up the flags face the camera with their backs to the sun.
-  const closeLight = new DirectionalLight(0xfff0d8, 0);
-  closeLight.position.set(0.25, -0.45, 1);
-  scene.add(closeLight);
   const camera = new PerspectiveCamera(CAMERA_FOV, 1, CAMERA_NEAR, 2000);
   camera.position.set(0, 0, CAMERA_START);
 
@@ -264,6 +258,10 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
 
   const voxelMaterial = track(new MeshLambertMaterial({ vertexColors: true }));
   const glowMaterial = track(new MeshBasicMaterial({ toneMapped: false }));
+  // The flags are markers: they keep their colours whichever way they face the light.
+  const flagMaterial = track(new MeshBasicMaterial({ vertexColors: true, toneMapped: false }));
+  // Only the far side of a shell is drawn, so it shows around the model it holds and never in front of it.
+  const outlineMaterial = track(new MeshBasicMaterial({ color: OUTLINE_COLOR, side: BackSide, toneMapped: false }));
 
   const moon = new Mesh(track(createMoonGeometry()), voxelMaterial);
   moon.scale.setScalar(MOON_SCALE);
@@ -456,8 +454,13 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
       .addScaledVector(flagsEast, side * FLAGS_SCALE)
       .normalize();
     const label = createLabel(options.placeLabelClassName, name, new Vector3());
+    const flag = addLandmark(built.geometry, unit, FLAGS_SCALE, label, (built.size.y + 2) * FLAGS_SCALE, cityToGlobe(home));
+    flag.material = flagMaterial;
+    const outline = new Mesh(track(buildOutline(model, built)), outlineMaterial);
+    outline.matrixAutoUpdate = false;
+    flag.add(outline);
     // Drawn after the route of the close-up, which ignores what is in front of it.
-    addLandmark(built.geometry, unit, FLAGS_SCALE, label, (built.size.y + 2) * FLAGS_SCALE, cityToGlobe(home)).renderOrder = 2;
+    for (const mesh of [flag, outline]) mesh.renderOrder = 2;
     return label;
   });
   const vehicleHome = cityToGlobe(city.origin);
@@ -652,7 +655,6 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     introTime = goal > introTime ? Math.min(goal, introTime + step) : Math.max(goal, introTime - step);
     introEase = introTime * introTime * (3 - 2 * introTime);
     city.setProgress(introEase);
-    closeLight.intensity = CLOSE_LIGHT * (1 - clamp(introEase / CLOSE_LIGHT_END, 0, 1));
   };
 
   // Day of the journey, read off the leg the traveller is on.
