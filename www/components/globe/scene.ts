@@ -24,9 +24,10 @@ import { bearing, type Coordinates, pickExit, SLUSSEN } from '@/lib/geo';
 import { createMoonGeometry, createSurfaceLookup, DEFAULT_EARTH_LEVEL, EARTH_LEVEL_COUNT, GLOBE_RADIUS, MOON_RADIUS } from '@/lib/globe/earth';
 import { DEG, latLonToUnit } from '@/lib/globe/geo';
 import type { LatLon } from '@/lib/globe/geo';
-import { ARRIVAL_DAY, LEGS, locateJourney, SIGHTS, STOCKHOLM } from '@/lib/globe/journey';
+import { STOCKHOLM } from '@/lib/globe/journey';
 import type { VehicleId } from '@/lib/globe/journey';
-import { JOURNEY_TRACKS, type Track, trackPoint } from '@/lib/globe/track';
+import { DEFAULT_JOURNEY_PLAN, type JourneyPlan, locateJourney } from '@/lib/globe/journeys';
+import { type Track, trackPoint } from '@/lib/globe/track';
 import { hash3 } from '@/lib/voxel/hash';
 import { buildVoxelGeometry } from '@/lib/voxel/mesher';
 import { buildModel, buildPlantedModel } from '@/lib/voxel/model';
@@ -143,6 +144,8 @@ export type GlobeSceneOptions = {
   placeLabelClassName: string;
   districtLabelClassName: string;
   places?: GlobePlaces;
+  // The way around the globe. Without it the scene shows the first journey.
+  journey?: JourneyPlan;
   reducedMotion: boolean;
   // Journey progress from 0 to 1. Without it the scene runs on its own clock.
   getProgress?: () => number;
@@ -233,6 +236,8 @@ const createStars = (): Points => {
 
 export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle => {
   const { canvas, labelLayer, reducedMotion, onLegChange, onStatusChange } = options;
+  const journey = options.journey ?? DEFAULT_JOURNEY_PLAN;
+  const { legs, tracks } = journey;
   const disposables: { dispose: () => void }[] = [];
   const track = <T extends { dispose: () => void }>(item: T): T => {
     disposables.push(item);
@@ -327,7 +332,6 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
   };
 
   // Route: dashes and arrows hovering above the surface.
-  const tracks = JOURNEY_TRACKS;
   const dashes: Marker[] = [];
   const arrows: Marker[] = [];
   let carry = DASH_SPACING / 2;
@@ -426,7 +430,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     return { element, anchor, closeness: 1 };
   };
 
-  const labels: Label[] = SIGHTS.map((sight) => {
+  const labels: Label[] = journey.sights.map((sight) => {
     const built = buildModel(SIGHT_MODEL_DEFS[sight.modelId]);
     const label = createLabel(options.sightLabelClassName, sight.name, new Vector3());
     addLandmark(built.geometry, latLonToUnit(sight.position), SIGHT_SCALE, label, built.size.y * SIGHT_SCALE + 0.6);
@@ -517,7 +521,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
 
   // Driven mode: an outside clock decides how far along the journey is.
   const syncToProgress = (progress: number): void => {
-    const location = locateJourney(progress);
+    const location = locateJourney(journey, progress);
     setLeg(location.legIndex, location.legProgress);
 
     const running = progress > 0 && progress < 1;
@@ -535,7 +539,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
       legProgress = progress;
       return;
     }
-    if (legIndex === LEGS.length - 1) {
+    if (legIndex === legs.length - 1) {
       legProgress = 1;
       setStatus({ running: false, finished: true });
       return;
@@ -553,7 +557,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
   // The leg decides who travels unless an outside clock does. Nobody is left once the journey is over.
   const findTraveller = (): GlobeTraveller | null => {
     if (options.getTraveller) return options.getTraveller();
-    return status.finished ? null : { modelId: LEGS[legIndex].modelId, moving: status.running };
+    return status.finished ? null : { modelId: legs[legIndex].modelId, moving: status.running };
   };
 
   const updateVehicle = (delta: number): void => {
@@ -653,14 +657,14 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
 
   // Day of the journey, read off the leg the traveller is on.
   const journeyDay = (): number => {
-    const from = LEGS[legIndex].startDay;
-    const to = legIndex < LEGS.length - 1 ? LEGS[legIndex + 1].startDay : ARRIVAL_DAY;
+    const from = legs[legIndex].startDay;
+    const to = legIndex < legs.length - 1 ? legs[legIndex + 1].startDay : journey.arrivalDay;
     return from + (to - from) * legProgress;
   };
 
   // One prograde lap per sidereal month of journey time, in the camera's frame.
   const updateMoon = (): void => {
-    const months = (journeyDay() - LEGS[0].startDay) / MOON_ORBIT_DAYS;
+    const months = (journeyDay() - legs[0].startDay) / MOON_ORBIT_DAYS;
     const angle = MOON_START_ANGLE + (reducedMotion ? 0 : months * Math.PI * 2);
     // Wider than the camera distance, so the near side passes behind the camera.
     const radius = Math.max(MOON_ORBIT_RADIUS, distance * MOON_CAMERA_MARGIN);
@@ -838,7 +842,7 @@ export const createGlobeScene = (options: GlobeSceneOptions): GlobeSceneHandle =
     },
     restart,
     stepLeg: (delta: number): void => {
-      setLeg(clamp(legIndex + delta, 0, LEGS.length - 1), 0);
+      setLeg(clamp(legIndex + delta, 0, legs.length - 1), 0);
       setStatus({ finished: false, started: true });
     },
     toggleFollow: (): void => {

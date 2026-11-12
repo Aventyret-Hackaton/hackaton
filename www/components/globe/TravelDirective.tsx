@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 
-import { LEGS } from '@/lib/globe/journey';
+import type { Journey } from '@/lib/globe/journey';
 import type { VoxelModelDef } from '@/lib/voxel/model';
 import { VEHICLE_MODELS } from '@/lib/voxel/models';
 
@@ -27,13 +27,14 @@ const ICON_SIZE = 64;
 const SCROLL_MARGIN = 6;
 
 // The legs around the globe, in the shape the directive list wants.
-export const LEG_STEPS: readonly DirectiveStep[] = LEGS.map((leg) => ({
-  id: leg.id,
-  model: VEHICLE_MODELS[leg.modelId],
-  time: `Dag ${leg.startDay}`,
-  mode: leg.mode,
-  instruction: leg.instruction
-}));
+export const buildLegSteps = ({ legs }: Journey): readonly DirectiveStep[] =>
+  legs.map((leg) => ({
+    id: leg.id,
+    model: VEHICLE_MODELS[leg.modelId],
+    time: `Dag ${leg.startDay}`,
+    mode: leg.mode,
+    instruction: leg.instruction
+  }));
 
 export const TravelDirective = ({ steps, currentStep }: TravelDirectiveProps): React.JSX.Element => {
   const listRef = useRef<HTMLOListElement>(null);
@@ -87,7 +88,6 @@ export const TravelDirective = ({ steps, currentStep }: TravelDirectiveProps): R
           );
         })}
       </ol>
-      <p className={styles.footer}>Hålltider · resdag</p>
     </section>
   );
 };

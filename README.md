@@ -1,12 +1,32 @@
 # Pointless travel planner
 
-> **Pointless travel planner** — a Next.js app built on the [Äventyret rig](https://github.com/Aventyret/aventyret-rig).
+> A travel planner that gives you the worst possible directions between two Stockholm addresses — gloriously, globally, on purpose.
 
-This is a travel planner that visualizes absurldy bad travel directions between to addresses in Stockholm, Sweden.
+## The game
 
-The service will always choose a ridiculously long direction (globally). Not always the longest but always something very long.
+Pick where you are and where you want to go in Stockholm, hit **Starta omvägen** ("start the detour"), and the planner flatly refuses to take you there in any sensible way. Instead it commits — hard — to the single worst idea it has: it sends you the *long* way around the planet.
 
-We want to rely heavily on 3d rendered UI (with three.js).
+What follows is the whole pointless odyssey, played out on a living voxel world: out of the city, down to a jetty, onto a boat, across oceans and deserts by every vehicle imaginable, and eventually back to Slussen for the last stretch home. Days tick by. You can sit back and watch it in real time, or fast-forward through the absurdity. It is a travel planner with exactly one, deeply committed bad idea.
+
+## What we brought to life
+
+The concept was simple and stubborn: *a route planner that is always magnificently wrong.* The ideas we built around it:
+
+- **Always the long way round.** The planner never picks the sensible route — it picks a ridiculously long way around the globe, every time.
+- **A hand-built voxel world.** The entire UI is rendered in 3D with three.js. We wrote our own little voxel engine (grid → mesher → models) rather than using sprites or pre-made assets.
+- **A start screen that's alive.** The landing page is a voxel diorama with wandering characters, a taxi on the road, a metro easing out of the tunnel, a swan pedal-boat on the river, a rocket, drifting clouds and a pixel sun.
+- **The journey, visualized.** The trip plays out on a voxel globe that pulls back from a hand-drawn close-up of Stockholm all the way out to the planet, with a street-level *"Här är du"* view kept in sync, step by step.
+- **A timeline you control.** Watch it unfold in real time, or press `S` to skip from 100× up to 10,000,000× and back.
+- **Deadpan Swedish copy** and arcade styling throughout, to sell the joke.
+- **Sound.** A looping theme — calm while you plan, upbeat once you depart, and nudged faster as you speed the journey up — plus arcade UI sound effects.
+
+## How we built it
+
+- Built during a hackathon on top of the **[Äventyret rig](https://github.com/Aventyret/aventyret-rig)**, our Docker/Traefik-based dev platform, as a **Next.js (App Router)** app.
+- A **three.js voxel engine** written from scratch under `www/lib/voxel`, with models for people, vehicles, boats, sights and scenery.
+- **Google Places** powers the Stockholm address autocomplete.
+- We worked in parallel on feature branches and merged through **pull requests**, iterating quickly on the feel — the start scene, the globe's levels of detail, the Stockholm close-up, and the audio.
+- Accessibility kept in mind throughout: `prefers-reduced-motion` stops the animation, the audio can be muted, and nothing relies on sound alone.
 
 Try it out: https://pointless-travel-planner.vercel.app/
 
