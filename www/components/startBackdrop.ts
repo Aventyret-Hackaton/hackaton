@@ -77,6 +77,9 @@ const ELDER_SPEED = 0.42;
 const TURN_SPEED = 4;
 const WATER_BEATS = 8;
 
+// The most pixels the scene is drawn with. Larger windows are drawn coarser and scaled up.
+const MAX_PIXELS = 2560 * 1440;
+
 // The rocket waits, shakes, leaves, stays away and comes back down, in seconds.
 const ROCKET_WAIT = 14;
 const ROCKET_SHAKE = 1.6;
@@ -167,7 +170,6 @@ const turnToward = (angle: number, target: number, step: number): number => {
 
 export const createStartBackdrop = ({ canvas, reducedMotion }: StartBackdropOptions): StartBackdropHandle => {
   const renderer = new WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setClearColor(S.haze, 1);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFSoftShadowMap;
@@ -255,7 +257,7 @@ export const createStartBackdrop = ({ canvas, reducedMotion }: StartBackdropOpti
 
   // A model with poses in a holder, sized like plant. The holder is where it stands and which way it faces.
   const cast = (def: VoxelModelDef, pixel: Pixel, pixels: number): { model: PosedModel; holder: Group; place: Place } => {
-    const model = createPosedModel(def, lit);
+    const model = createPosedModel(def, lit, !reducedMotion);
     posed.push(model);
     const place = ground.seenAt(pixel);
     model.mesh.scale.setScalar(fitVoxel(place, pixels, model.size.y));
@@ -326,7 +328,7 @@ export const createStartBackdrop = ({ canvas, reducedMotion }: StartBackdropOpti
   const walkElder = createWalker(START_PEOPLE.elder, [462, 768], 195, routes.footpath, routes.footpath.length - 4.9, routes.footpath.length - 2.3, ELDER_SPEED);
   const walkHiker = createWalker(START_PEOPLE.hiker, [705, 460], 85, routes.trail, 6.8, 16, HIKER_SPEED);
 
-  const taxi = createPosedModel(START_VEHICLES.taxi, lit);
+  const taxi = createPosedModel(START_VEHICLES.taxi, lit, !reducedMotion);
   posed.push(taxi);
   taxi.mesh.scale.setScalar(TAXI_VOXEL);
   taxi.mesh.castShadow = true;
@@ -334,7 +336,7 @@ export const createStartBackdrop = ({ canvas, reducedMotion }: StartBackdropOpti
   taxiHolder.add(taxi.mesh);
   scene.add(taxiHolder);
 
-  const swan = createPosedModel(START_VEHICLES.swan, lit);
+  const swan = createPosedModel(START_VEHICLES.swan, lit, !reducedMotion);
   posed.push(swan);
   swan.mesh.scale.setScalar(SWAN_VOXEL);
   swan.mesh.castShadow = true;
@@ -371,7 +373,7 @@ export const createStartBackdrop = ({ canvas, reducedMotion }: StartBackdropOpti
     return holder;
   });
 
-  const sunModel = createPosedModel(START_SCENERY.sun, glow);
+  const sunModel = createPosedModel(START_SCENERY.sun, glow, !reducedMotion);
   posed.push(sunModel);
   sunModel.mesh.rotation.y = -Math.PI / 2;
   sunModel.mesh.scale.setScalar(((100 / FOCAL) * 300) / 15);
@@ -501,6 +503,7 @@ export const createStartBackdrop = ({ canvas, reducedMotion }: StartBackdropOpti
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
     if (width === 0 || height === 0) return;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2, Math.sqrt(MAX_PIXELS / (width * height))));
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.fov = camera.aspect >= FRAME_ASPECT ? FRAME_FOV : (2 * Math.atan((Math.tan((FRAME_FOV * DEG) / 2) * FRAME_ASPECT) / camera.aspect)) / DEG;
@@ -524,14 +527,28 @@ export const createStartBackdrop = ({ canvas, reducedMotion }: StartBackdropOpti
     renderer.render(scene, camera);
     frame = requestAnimationFrame(tick);
   };
+  // The poses are built between the frames, one at a time and a model in turn, so that no frame waits for them.
+  let warming = 0;
+  let turn = 0;
+  const warm = (): void => {
+    for (let tried = 0; tried < posed.length; tried += 1) {
+      turn = (turn + 1) % posed.length;
+      if (!posed[turn].prepare()) continue;
+      warming = window.setTimeout(warm, 0);
+      return;
+    }
+  };
+
   if (!reducedMotion) {
     window.addEventListener('pointermove', onPointerMove);
     frame = requestAnimationFrame(tick);
+    warming = window.setTimeout(warm, 0);
   }
 
   return {
     dispose: (): void => {
       cancelAnimationFrame(frame);
+      window.clearTimeout(warming);
       observer.disconnect();
       window.removeEventListener('pointermove', onPointerMove);
       posed.forEach((model) => model.dispose());

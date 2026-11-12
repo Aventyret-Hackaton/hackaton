@@ -8,6 +8,8 @@ Pick where you are and where you want to go in Stockholm, hit **Starta omvägen*
 
 What follows is the whole pointless odyssey, played out on a living voxel world: out of the city, down to a jetty, onto a boat, across oceans and deserts by every vehicle imaginable, and eventually back to Slussen for the last stretch home. Days tick by. You can sit back and watch it in real time, or fast-forward through the absurdity. It is a travel planner with exactly one, deeply committed bad idea.
 
+Try it out: https://pointless-travel-planner.vercel.app/
+
 ## What we brought to life
 
 The concept was simple and stubborn: *a route planner that is always magnificently wrong.* The ideas we built around it:
