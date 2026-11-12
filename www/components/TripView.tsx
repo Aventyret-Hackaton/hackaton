@@ -9,6 +9,7 @@ import { ArrivalConfetti } from '@/components/globe/ArrivalConfetti';
 import { pixelFont } from '@/components/globe/pixelFont';
 import { RouteCaption } from '@/components/globe/RouteCaption';
 import { isTypingTarget } from '@/components/globe/keyboard';
+// NOTE: We do not show scanline hint for now
 import { SCANLINE_HINT, ScanlineOverlay } from '@/components/globe/ScanlineOverlay';
 import { TitleBar } from '@/components/globe/TitleBar';
 import { buildLegSteps, type DirectiveStep, TravelDirective } from '@/components/globe/TravelDirective';
@@ -196,7 +197,7 @@ export const TripView = ({ origin, destination, journey, onReset }: TripViewProp
   const paused = trip !== null && trip.timeline.paused;
   const underWay = started && !paused && phase !== 'arrived';
   const runHint: KeyHint = started ? ['Mellanslag', paused ? 'fortsätt' : 'pausa'] : START_HINT;
-  const hints: readonly KeyHint[] = [...(phase === 'arrived' ? [] : [runHint]), speedHint, SLOWER_HINT, MUTE_HINT, ...SCANLINE_HINT];
+  const hints: readonly KeyHint[] = [...(phase === 'arrived' ? [] : [runHint]), speedHint, SLOWER_HINT, MUTE_HINT];
   const stepByPhase: Record<TripPhase, number | null> = {
     outbound: 0,
     jetty: 1,
