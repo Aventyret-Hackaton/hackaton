@@ -28,6 +28,8 @@ The concept was simple and stubborn: *a route planner that is always magnificent
 - We worked in parallel on feature branches and merged through **pull requests**, iterating quickly on the feel — the start scene, the globe's levels of detail, the Stockholm close-up, and the audio.
 - Accessibility kept in mind throughout: `prefers-reduced-motion` stops the animation, the audio can be muted, and nothing relies on sound alone.
 
+Try it out: https://pointless-travel-planner.vercel.app/
+
 ## Codebase description
 
 Hackaton is a Next.js (App Router) frontend served as the `www` service through
