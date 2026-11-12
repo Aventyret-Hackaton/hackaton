@@ -8,6 +8,8 @@ Pick where you are and where you want to go in Stockholm, hit **Starta omvägen*
 
 What follows is the whole pointless odyssey, played out on a living voxel world: out of the city, down to a jetty, onto a boat, across oceans and deserts by every vehicle imaginable, and eventually back to Slussen for the last stretch home. Days tick by. You can sit back and watch it in real time, or fast-forward through the absurdity. It is a travel planner with exactly one, deeply committed bad idea.
 
+Try it out: https://pointless-travel-planner.vercel.app/
+
 ## What we brought to life
 
 The concept was simple and stubborn: *a route planner that is always magnificently wrong.* The ideas we built around it:
@@ -27,8 +29,6 @@ The concept was simple and stubborn: *a route planner that is always magnificent
 - **Google Places** powers the Stockholm address autocomplete.
 - We worked in parallel on feature branches and merged through **pull requests**, iterating quickly on the feel — the start scene, the globe's levels of detail, the Stockholm close-up, and the audio.
 - Accessibility kept in mind throughout: `prefers-reduced-motion` stops the animation, the audio can be muted, and nothing relies on sound alone.
-
-Try it out: https://pointless-travel-planner.vercel.app/
 
 ## Codebase description
 
