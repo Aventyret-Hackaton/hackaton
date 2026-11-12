@@ -2,6 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
+import { isTypingTarget } from '@/components/globe/keyboard';
+
 import styles from './AudioProvider.module.css';
 
 export type SfxName = 'hover' | 'click' | 'confirm' | 'back' | 'swap' | 'focus' | 'not-ready' | 'start' | 'pause' | 'resume';
@@ -219,8 +221,22 @@ export const AudioProvider = ({ children }: { children: ReactNode }): React.JSX.
       window.addEventListener(event, onGesture, { passive: true });
     }
 
+    // Nothing plays while the page is hidden or on its way out.
+    const onVisibility = (): void => {
+      if (document.hidden) {
+        void ctx.suspend();
+      } else {
+        void ctx.resume();
+      }
+    };
+    const onPageHide = (): void => void ctx.suspend();
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
+
     return (): void => {
       disposed = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
       for (const event of events) {
         window.removeEventListener(event, onGesture);
       }
@@ -228,6 +244,18 @@ export const AudioProvider = ({ children }: { children: ReactNode }): React.JSX.
       void ctx.close();
     };
   }, [playTheme]);
+
+  // M mutes and unmutes from anywhere outside a text field.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const modified = event.metaKey || event.ctrlKey || event.altKey;
+      if (!modified && !event.repeat && !isTypingTarget(event.target) && event.key.toLowerCase() === 'm') {
+        toggleMuted();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return (): void => window.removeEventListener('keydown', onKeyDown);
+  }, [toggleMuted]);
 
   const api = useMemo<AudioApi>(() => ({ playSfx, setGameSpeed, setTheme, muted, toggleMuted }), [playSfx, setGameSpeed, setTheme, muted, toggleMuted]);
 
