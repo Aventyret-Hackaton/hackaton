@@ -431,25 +431,69 @@ const TOP: readonly (readonly [number, number])[] = [
   [0, 1]
 ];
 
-type Quads = { positions: number[]; normals: number[]; colors: number[] };
+// Corners are written straight into arrays of their final size, which is much faster than growing lists.
+type Quads = {
+  geometry: BufferGeometry;
+  corner: (x: number, y: number, z: number, normal: readonly [number, number, number], r: number, g: number, b: number) => void;
+};
 
-const toGeometry = ({ positions, normals, colors }: Quads): BufferGeometry => {
-  const quads = positions.length / 12;
-  const indices = new Uint32Array(quads * 6);
-  for (let quad = 0; quad < quads; quad += 1) {
+const createQuads = (count: number): Quads => {
+  const positions = new Float32Array(count * 12);
+  const normals = new Float32Array(count * 12);
+  const colors = new Float32Array(count * 12);
+  const indices = new Uint32Array(count * 6);
+  for (let quad = 0; quad < count; quad += 1) {
     indices.set([quad * 4, quad * 4 + 1, quad * 4 + 2, quad * 4, quad * 4 + 2, quad * 4 + 3], quad * 6);
   }
   const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
-  geometry.setAttribute('normal', new BufferAttribute(new Float32Array(normals), 3));
-  geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
+  geometry.setAttribute('position', new BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new BufferAttribute(normals, 3));
+  geometry.setAttribute('color', new BufferAttribute(colors, 3));
   geometry.setIndex(new BufferAttribute(indices, 1));
-  return geometry;
+
+  let at = 0;
+  return {
+    geometry,
+    corner: (x, y, z, normal, r, g, b): void => {
+      positions[at] = x;
+      positions[at + 1] = y;
+      positions[at + 2] = z;
+      normals[at] = normal[0];
+      normals[at + 1] = normal[1];
+      normals[at + 2] = normal[2];
+      colors[at] = r;
+      colors[at + 1] = g;
+      colors[at + 2] = b;
+      at += 3;
+    }
+  };
+};
+
+const UP = [0, 1, 0] as const;
+
+// Where the wall towards a neighbour ends. The edge of the ground gets a skirt.
+const footOf = (field: Field, col: number, row: number, height: number): number => {
+  const beside = heightOf(field, col, row);
+  return Number.isNaN(beside) ? height - SKIRT : beside;
+};
+
+const countQuads = (field: Field): number => {
+  const { cols, rows } = field;
+  let count = 0;
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const height = field.height[row * cols + col];
+      if (Number.isNaN(height)) continue;
+      count += 1;
+      for (const wall of WALLS) if (footOf(field, col + wall.col, row + wall.row, height) < height) count += 1;
+    }
+  }
+  return count;
 };
 
 const buildField = (field: Field): BufferGeometry => {
   const { cell, cols, rows, x0, d0 } = field;
-  const quads: Quads = { positions: [], normals: [], colors: [] };
+  const quads = createQuads(countQuads(field));
   const far = toLinear(S.hill);
   const color = new Color();
 
@@ -468,32 +512,26 @@ const buildField = (field: Field): BufferGeometry => {
       else color.copy(toLinear(laneColor(kind, field.across[index], field.along[index], field.half[index], speck)));
       color.multiplyScalar(1 + (hash3(col, row, 7) - 0.5) * JITTER);
 
-      for (const [across, ahead] of TOP) {
-        quads.positions.push(x + across * cell, height, -(d + ahead * cell));
-        quads.normals.push(0, 1, 0);
-        quads.colors.push(color.r, color.g, color.b);
-      }
+      for (const [across, ahead] of TOP) quads.corner(x + across * cell, height, -(d + ahead * cell), UP, color.r, color.g, color.b);
 
       for (const wall of WALLS) {
-        const beside = heightOf(field, col + wall.col, row + wall.row);
-        const foot = Number.isNaN(beside) ? height - SKIRT : beside;
+        const foot = footOf(field, col + wall.col, row + wall.row, height);
         if (foot >= height) continue;
         for (const [across, ahead, top] of wall.corners) {
-          quads.positions.push(x + across * cell, top === 1 ? height : foot, -(d + ahead * cell));
-          quads.normals.push(...wall.normal);
-          quads.colors.push(color.r * SIDE_SHADE, color.g * SIDE_SHADE, color.b * SIDE_SHADE);
+          quads.corner(x + across * cell, top === 1 ? height : foot, -(d + ahead * cell), wall.normal, color.r * SIDE_SHADE, color.g * SIDE_SHADE, color.b * SIDE_SHADE);
         }
       }
     }
   }
-  return toGeometry(quads);
+  return quads.geometry;
 };
 
 type Water = { geometry: BufferGeometry; flow: (seconds: number) => void };
 
 // One quad per wet cell. Bands of lighter and darker water run down the river.
 const buildWater = (fields: readonly Field[]): Water => {
-  const quads: Quads = { positions: [], normals: [], colors: [] };
+  const wet = fields.reduce((count, field) => count + field.height.reduce((sum, height) => sum + (isWet(height) ? 1 : 0), 0), 0);
+  const quads = createQuads(wet);
   const cells: { along: number; across: number; seed: number }[] = [];
 
   for (const field of fields) {
@@ -502,17 +540,13 @@ const buildWater = (fields: readonly Field[]): Water => {
       for (let col = 0; col < cols; col += 1) {
         const index = row * cols + col;
         if (!isWet(field.height[index])) continue;
-        for (const [across, ahead] of TOP) {
-          quads.positions.push(x0 + (col + across) * cell, WATER_LEVEL, -(d0 + (row + ahead) * cell));
-          quads.normals.push(0, 1, 0);
-          quads.colors.push(0, 0, 0);
-        }
+        for (const [across, ahead] of TOP) quads.corner(x0 + (col + across) * cell, WATER_LEVEL, -(d0 + (row + ahead) * cell), UP, 0, 0, 0);
         cells.push({ along: field.along[index], across: field.across[index], seed: hash3(col, row, 3) });
       }
     }
   }
 
-  const geometry = toGeometry(quads);
+  const { geometry } = quads;
   const colors = geometry.getAttribute('color');
   const tones = [S.river, S.riverLight, S.riverDeep, S.foam].map(toLinear);
 
