@@ -8,6 +8,8 @@ The service will always choose a ridiculously long direction (globally). Not alw
 
 We want to rely heavily on 3d rendered UI (with three.js).
 
+Try it out: https://pointless-travel-planner.vercel.app/
+
 ## Codebase description
 
 Hackaton is a Next.js (App Router) frontend served as the `www` service through
