@@ -2,7 +2,8 @@
 
 import { type ReactNode, useEffect, useRef } from 'react';
 
-import { APP_TITLE } from '@/lib/globe/journey';
+import { TitleBar } from '@/components/globe/TitleBar';
+import { pixelFont } from '@/components/globe/pixelFont';
 
 import { createStartBackdrop } from './startBackdrop';
 import styles from './StartScene.module.css';
@@ -33,12 +34,12 @@ export const StartScene = ({ children }: StartSceneProps): React.JSX.Element => 
   }, []);
 
   return (
-    <div ref={stageRef} className={styles.stage}>
+    <div ref={stageRef} className={`${styles.stage} ${pixelFont.variable}`}>
       <canvas ref={canvasRef} className={styles.backdrop} aria-hidden="true" />
-      <div className={styles.board}>
-        <h1 className={styles.name}>{APP_TITLE}</h1>
-        {children}
+      <div className={styles.masthead}>
+        <TitleBar />
       </div>
+      <div className={styles.board}>{children}</div>
     </div>
   );
 };
