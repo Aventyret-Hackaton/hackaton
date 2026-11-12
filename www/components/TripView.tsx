@@ -25,6 +25,7 @@ import {
   getEffectiveSpeed,
   getGlobeProgress,
   getNextSpeed,
+  getPreviousSpeed,
   getTimelineState,
   hasStarted,
   NOT_STARTED,
@@ -32,7 +33,7 @@ import {
   TRIP_SPEEDS,
   type TripPhase,
   withSpeed,
-  withStart
+  withToggledRun
 } from '@/lib/timeline';
 import { FLAGS_MODEL } from '@/lib/voxel/models';
 
@@ -59,6 +60,8 @@ const HEADING_SPAN = 0.002;
 const ARRIVED_TEXT = 'Framme. Nu då?';
 const PHASE_TICK_MS = 200;
 const START_HINT: KeyHint = ['Mellanslag', 'ge dig av'];
+const SLOWER_HINT: KeyHint = ['Shift+S', 'långsammare'];
+const MUTE_HINT: KeyHint = ['M', 'ljud av / på'];
 
 const fetchStreetLegs = async (origin: Place, destination: Place, signal: AbortSignal): Promise<StreetLegs> => {
   const params = new URLSearchParams({
@@ -86,13 +89,13 @@ const buildSteps = ({ exit }: StreetLegs, journey: JourneyPlan): readonly Direct
 const getTraveller = (journey: JourneyPlan, timeline: Timeline, aheadSeconds: number): Traveller => {
   const state = getTimelineState(timeline, performance.now() + aheadSeconds * 1000);
   if (state.phase !== 'globe') {
-    return { modelId: 'walker', unit: STOCKHOLM_UNIT, heading: NO_HEADING, urban: true, moving: hasStarted(timeline) && state.phase !== 'arrived' };
+    return { modelId: 'walker', unit: STOCKHOLM_UNIT, heading: NO_HEADING, urban: true, moving: hasStarted(timeline) && !timeline.paused && state.phase !== 'arrived' };
   }
   const { legIndex, legProgress } = locateJourney(journey, state.progress);
   const track = journey.tracks[legIndex];
   const from = trackPoint(track, legProgress - HEADING_SPAN, new Vector3());
   const heading = trackPoint(track, legProgress + HEADING_SPAN, new Vector3()).sub(from);
-  return { modelId: journey.legs[legIndex].modelId, unit: trackPoint(track, legProgress, from), heading, urban: false, moving: true };
+  return { modelId: journey.legs[legIndex].modelId, unit: trackPoint(track, legProgress, from), heading, urban: false, moving: !timeline.paused };
 };
 
 // The globe shows the same traveller as the street view, and nobody once the trip is over.
@@ -144,6 +147,7 @@ export const TripView = ({ origin, destination, journey, onReset }: TripViewProp
           legs,
           timeline: {
             startTime: NOT_STARTED,
+            paused: false,
             elapsedSeconds: 0,
             speed: TRIP_SPEEDS[0],
             outboundSeconds: legs.outbound.durationSeconds,
@@ -158,7 +162,7 @@ export const TripView = ({ origin, destination, journey, onReset }: TripViewProp
     return (): void => controller.abort();
   }, [origin, destination, journey]);
 
-  // Space sets the trip off. S steps the speed up one notch, and back to real time after the fastest allowed.
+  // Space sets the trip off, then pauses and resumes it. S steps the speed up one notch, wrapping to real time, and Shift+S steps it down.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       const modified = event.metaKey || event.ctrlKey || event.altKey;
@@ -167,16 +171,20 @@ export const TripView = ({ origin, destination, journey, onReset }: TripViewProp
         return;
       }
       event.preventDefault();
+      const slower = event.shiftKey;
       const now = performance.now();
       setTrip((previous) => {
         if (!previous) {
           return previous;
         }
         const { timeline } = previous;
+        const { phase } = getTimelineState(timeline, now);
         if (key === ' ') {
-          return { ...previous, timeline: withStart(timeline, now) };
+          // There is nothing left to pause once the trip is over.
+          return phase === 'arrived' ? previous : { ...previous, timeline: withToggledRun(timeline, now) };
         }
-        return { ...previous, timeline: withSpeed(timeline, getNextSpeed(timeline, getTimelineState(timeline, now).phase), now) };
+        const speed = slower ? getPreviousSpeed(timeline, phase) : getNextSpeed(timeline, phase);
+        return { ...previous, timeline: withSpeed(timeline, speed, now) };
       });
     };
     window.addEventListener('keydown', onKeyDown);
@@ -185,7 +193,10 @@ export const TripView = ({ origin, destination, journey, onReset }: TripViewProp
 
   const started = trip !== null && hasStarted(trip.timeline);
   const speedHint: KeyHint = ['S', `snabbare · nu ${formatSpeed(trip ? getEffectiveSpeed(trip.timeline, phase) : TRIP_SPEEDS[0])}`];
-  const hints: readonly KeyHint[] = [...(started ? [] : [START_HINT]), speedHint, ...SCANLINE_HINT];
+  const paused = trip !== null && trip.timeline.paused;
+  const underWay = started && !paused && phase !== 'arrived';
+  const runHint: KeyHint = started ? ['Mellanslag', paused ? 'fortsätt' : 'pausa'] : START_HINT;
+  const hints: readonly KeyHint[] = [...(phase === 'arrived' ? [] : [runHint]), speedHint, SLOWER_HINT, MUTE_HINT, ...SCANLINE_HINT];
   const stepByPhase: Record<TripPhase, number | null> = {
     outbound: 0,
     jetty: 1,
@@ -207,8 +218,10 @@ export const TripView = ({ origin, destination, journey, onReset }: TripViewProp
     speedTouched.current = true;
   }, [audio, effectiveSpeed]);
   useEffect(() => {
-    // Slow theme while planning, the main theme once the trip is under way.
-    audio.setTheme(started ? 'main' : 'slow');
+    // The main theme only while the trip is moving, the slow one before, while paused and after.
+    audio.setTheme(underWay ? 'main' : 'slow');
+  }, [audio, underWay]);
+  useEffect(() => {
     if (started) {
       audio.playSfx('confirm');
     }

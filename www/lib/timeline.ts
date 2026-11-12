@@ -9,8 +9,10 @@ const INBOUND_MAX_SPEED = 300;
 export const NOT_STARTED = Number.POSITIVE_INFINITY;
 
 export type Timeline = {
-  // performance.now() timestamp of when the current speed was set, or NOT_STARTED.
+  // performance.now() timestamp of when the clock last started running, or NOT_STARTED while it stands still.
   startTime: number;
+  // True when the trip has set off but is paused.
+  paused: boolean;
   // Trip seconds that had been travelled at that time.
   elapsedSeconds: number;
   speed: number;
@@ -51,15 +53,24 @@ export const getNextSpeed = (timeline: Timeline, phase: TripPhase | null): numbe
   return TRIP_SPEEDS.find((speed) => speed > current) ?? TRIP_SPEEDS[0];
 };
 
-export const hasStarted = ({ startTime }: Timeline): boolean => startTime !== NOT_STARTED;
+// The next speed down from the current one, never below real time.
+export const getPreviousSpeed = (timeline: Timeline, phase: TripPhase | null): number => {
+  const current = getEffectiveSpeed(timeline, phase);
+  return TRIP_SPEEDS.findLast((speed) => speed < current) ?? TRIP_SPEEDS[0];
+};
 
-// The same trip, setting off now unless it already has.
-export const withStart = (timeline: Timeline, now: number): Timeline => (hasStarted(timeline) ? timeline : { ...timeline, startTime: now });
+const isRunning = ({ startTime }: Timeline): boolean => startTime !== NOT_STARTED;
 
-// The same trip continuing from where it is, at another speed. A trip that waits keeps waiting.
+export const hasStarted = (timeline: Timeline): boolean => isRunning(timeline) || timeline.paused;
+
+// The same trip, paused if it was running, and otherwise setting off or carrying on now.
+export const withToggledRun = (timeline: Timeline, now: number): Timeline =>
+  isRunning(timeline) ? { ...timeline, startTime: NOT_STARTED, elapsedSeconds: getElapsedSeconds(timeline, now), paused: true } : { ...timeline, startTime: now, paused: false };
+
+// The same trip continuing from where it is, at another speed. A trip that stands still keeps doing so.
 export const withSpeed = (timeline: Timeline, speed: number, now: number): Timeline => ({
   ...timeline,
-  startTime: hasStarted(timeline) ? now : NOT_STARTED,
+  startTime: isRunning(timeline) ? now : NOT_STARTED,
   elapsedSeconds: getElapsedSeconds(timeline, now),
   speed
 });
