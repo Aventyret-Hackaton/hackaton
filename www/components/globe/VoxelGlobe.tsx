@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { ARRIVAL_DAY, LEGS } from '@/lib/globe/journey';
+import { DEFAULT_JOURNEY_PLAN, type JourneyPlan } from '@/lib/globe/journeys';
 
 import { isTypingTarget } from './keyboard';
 import { pixelFont } from './pixelFont';
@@ -19,6 +19,8 @@ type VoxelGlobeProps = {
   onStatusChange?: (status: GlobeStatus) => void;
   // The two addresses in Stockholm. Without them the globe uses a pair of its own.
   places?: GlobePlaces;
+  // The way around the globe. Without it the globe shows the first journey.
+  journey?: JourneyPlan;
   // Whether a trip on an outside clock has set off. The globe leaves the close-up when it has.
   underWay?: boolean;
   // Who the globe shows travelling, or null for nobody. Without it the leg decides.
@@ -60,6 +62,7 @@ export const VoxelGlobe = ({
   onLegChange,
   onStatusChange,
   places,
+  journey = DEFAULT_JOURNEY_PLAN,
   underWay = true,
   getTraveller,
   caption,
@@ -98,6 +101,7 @@ export const VoxelGlobe = ({
       placeLabelClassName: styles.sightLabel,
       districtLabelClassName: styles.districtLabel,
       places: placesRef.current,
+      journey,
       reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
       getProgress: driven ? (): number => callbacksRef.current.getProgress?.() ?? 0 : undefined,
       isUnderWay: driven ? (): boolean => callbacksRef.current.underWay : undefined,
@@ -116,7 +120,7 @@ export const VoxelGlobe = ({
       sceneRef.current = null;
       scene.dispose();
     };
-  }, [driven, hasTraveller, placesKey]);
+  }, [driven, hasTraveller, placesKey, journey]);
 
   useEffect(() => {
     const pressed = new Set<string>();
@@ -190,15 +194,15 @@ export const VoxelGlobe = ({
     };
   }, [driven]);
 
-  const leg = LEGS[legIndex];
+  const leg = journey.legs[Math.min(legIndex, journey.legs.length - 1)];
   const waitingText = driven && underWay ? 'Tillfälligt stillastående.' : 'Tryck på mellanslag för att ge dig av.';
-  const ownText = status.finished ? `Dag ${ARRIVAL_DAY}. Framme. Nu då?` : status.started ? `Nu: ${leg.mode} · ${leg.from} → ${leg.to}` : waitingText;
+  const ownText = status.finished ? `Dag ${journey.arrivalDay}. Framme. Nu då?` : status.started ? `Nu: ${leg.mode} · ${leg.from} → ${leg.to}` : waitingText;
   const statusText = caption === undefined ? ownText : caption;
   const hints = [...(driven ? [] : JOURNEY_HINTS), ...VIEW_HINTS, ...extraHints];
 
   return (
     <div className={`${pixelFont.variable} ${styles.stage} ${className ?? ''}`}>
-      <canvas ref={canvasRef} className={styles.canvas} aria-label="Voxeljordklot med resvägen västerut från Slussen till Slussen" />
+      <canvas ref={canvasRef} className={styles.canvas} aria-label="Voxeljordklot med resvägen från Slussen till Slussen" />
       <div ref={labelLayerRef} className={styles.labels} />
       <ul className={styles.hints}>
         {hints.map(([keys, action]) => (
