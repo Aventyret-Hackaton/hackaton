@@ -421,6 +421,10 @@ export const createStartBackdrop = ({ canvas, reducedMotion }: StartBackdropOpti
   hang(taglineLayer, tagline, taglineVoxel, 0, 0);
   for (const side of [-1, 1]) hang(taglineLayer, build(START_SCENERY.rule), taglineVoxel, side * (TAGLINE_WIDTH / 2 + 110), taglineVoxel * 4);
 
+  // The start header is shown as HTML (TitleBar), matching the trip view.
+  titleLayer.visible = false;
+  taglineLayer.visible = false;
+
   const flyRocket = (seconds: number): void => {
     const time = seconds % (ROCKET_WAIT + ROCKET_SHAKE + ROCKET_FLIGHT * 2 + ROCKET_AWAY);
     const shaking = time - ROCKET_WAIT;

@@ -208,3 +208,14 @@
 .arrow {
   font-size: 2cqw;
 }
+
+/* HTML header, matching the trip view's TitleBar. */
+.masthead {
+  position: absolute;
+  top: clamp(14px, 3.4vh, 42px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(100vw - 32px, 920px);
+  z-index: 4;
+  pointer-events: none;
+}
