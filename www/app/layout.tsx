@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 
+import { AudioProvider } from '@/components/AudioProvider';
 import { TripProvider } from '@/components/TripContext';
 
 import './globals.css';
@@ -15,7 +16,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="sv">
       <body>
-        <TripProvider>{children}</TripProvider>
+        <AudioProvider>
+          <TripProvider>{children}</TripProvider>
+        </AudioProvider>
       </body>
     </html>
   );
