@@ -23,9 +23,14 @@ export type Sight = {
   position: LatLon;
 };
 
+export type Journey = {
+  legs: readonly Leg[];
+  sights: readonly Sight[];
+  arrivalDay: number;
+};
+
 export const APP_TITLE = 'Pointless Travel Planner';
 export const APP_TAGLINE = 'Den långa vägen hem';
-export const ARRIVAL_DAY = 1160;
 
 export const STOCKHOLM: LatLon = [59.32, 18.07];
 
@@ -40,7 +45,7 @@ const MANILA: LatLon = [14.6, 120.98];
 const PIRAEUS: LatLon = [37.94, 23.65];
 const NYNASHAMN: LatLon = [58.9, 17.95];
 
-export const LEGS: readonly Leg[] = [
+const LEGS: readonly Leg[] = [
   {
     id: 'gota-kanal',
     modelId: 'cruiser',
@@ -168,30 +173,8 @@ export const LEGS: readonly Leg[] = [
   }
 ];
 
-const SECONDS_PER_DAY = 86400;
-// Legs that start and end on the same day still take a few hours.
-const MIN_LEG_DAYS = 0.25;
-
-export const LEG_DAYS: readonly number[] = LEGS.map((leg, index) => Math.max((LEGS[index + 1]?.startDay ?? ARRIVAL_DAY) - leg.startDay, MIN_LEG_DAYS));
-const JOURNEY_DAYS = LEG_DAYS.reduce((sum, days) => sum + days, 0);
-export const JOURNEY_SECONDS = JOURNEY_DAYS * SECONDS_PER_DAY;
-
-export type JourneyLocation = { legIndex: number; legProgress: number };
-
-// Maps journey progress from 0 to 1 onto a leg, with every leg taking its days.
-export const locateJourney = (progress: number): JourneyLocation => {
-  const travelled = Math.min(1, Math.max(0, progress)) * JOURNEY_DAYS;
-  let legIndex = 0;
-  let before = 0;
-  while (legIndex < LEG_DAYS.length - 1 && before + LEG_DAYS[legIndex] <= travelled) {
-    before += LEG_DAYS[legIndex];
-    legIndex += 1;
-  }
-  return { legIndex, legProgress: Math.min(1, (travelled - before) / LEG_DAYS[legIndex]) };
-};
-
 // Invented, deliberately dull stops. None of them refer to a real place.
-export const SIGHTS: readonly Sight[] = [
+const SIGHTS: readonly Sight[] = [
   {
     id: 'kiosk',
     name: 'Slusskiosk, stängd för säsongen',
@@ -295,3 +278,5 @@ export const SIGHTS: readonly Sight[] = [
     position: [51.8, 22.4]
   }
 ];
+
+export const JOURNEY: Journey = { legs: LEGS, sights: SIGHTS, arrivalDay: 1160 };

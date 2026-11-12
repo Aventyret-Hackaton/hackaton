@@ -12,13 +12,14 @@ import styles from './StartScene.module.css';
 
 export const TripForm = (): React.JSX.Element => {
   const router = useRouter();
-  const { origin, destination, isLoaded, setOrigin, setDestination } = useTrip();
+  const { origin, destination, isLoaded, setOrigin, setDestination, startTrip } = useTrip();
   // Bumped on swap so both fields remount with their new place.
   const [swapNonce, setSwapNonce] = useState(0);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     if (origin && destination) {
+      startTrip();
       router.push('/trip');
     }
   };

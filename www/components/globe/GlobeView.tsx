@@ -7,10 +7,14 @@ import styles from './GlobeView.module.css';
 import { pixelFont } from './pixelFont';
 import { RouteCaption } from './RouteCaption';
 import { SCANLINE_HINT, ScanlineOverlay } from './ScanlineOverlay';
+import { DEFAULT_JOURNEY_PLAN } from '@/lib/globe/journeys';
+
 import type { GlobeStatus } from './scene';
 import { TitleBar } from './TitleBar';
-import { LEG_STEPS, TravelDirective } from './TravelDirective';
+import { buildLegSteps, TravelDirective } from './TravelDirective';
 import { VoxelGlobe } from './VoxelGlobe';
+
+const LEG_STEPS = buildLegSteps(DEFAULT_JOURNEY_PLAN);
 
 // Standalone demo of the voxel globe, running on its own clock.
 export const GlobeView = (): React.JSX.Element => {
