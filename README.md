@@ -83,7 +83,10 @@ in `www/app`.
   `www/components/globe` blends between them as the camera moves.
 - The trip opens on a close-up of Stockholm with the two addresses flagged A
   and B. When the journey starts the camera pulls back to the globe and the
-  flags follow along. On the way out the city gives way to three ever coarser
+  flags follow along. They are drawn unlit and with a white outline, which
+  keeps them readable against the city and the globe: `buildOutline` in
+  `www/lib/voxel/model.ts` gives any voxel model a shell that is drawn inside
+  out behind it. On the way out the city gives way to three ever coarser
   levels of the land around it, and those to the detail levels of the globe,
   which has a cut-out where they lie. The city is a hand-drawn voxel map in
   `www/lib/city`, the land around it comes from `region.ts` there, and
