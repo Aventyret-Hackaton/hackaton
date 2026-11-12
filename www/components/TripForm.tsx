@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import { useRouter } from 'next/navigation';
 
+import { useGameAudio } from '@/components/AudioProvider';
 import { PlaceAutocomplete } from '@/components/PlaceAutocomplete';
 import { StartScene } from '@/components/StartScene';
 import { useTrip } from '@/components/TripContext';
@@ -12,6 +13,7 @@ import styles from './StartScene.module.css';
 
 export const TripForm = (): React.JSX.Element => {
   const router = useRouter();
+  const audio = useGameAudio();
   const { origin, destination, isLoaded, setOrigin, setDestination, startTrip } = useTrip();
   // Bumped on swap so both fields remount with their new place.
   const [swapNonce, setSwapNonce] = useState(0);
@@ -20,6 +22,7 @@ export const TripForm = (): React.JSX.Element => {
     event.preventDefault();
     if (origin && destination) {
       startTrip();
+      audio.playSfx('start');
       router.push('/trip');
     }
   };
@@ -29,6 +32,7 @@ export const TripForm = (): React.JSX.Element => {
     setOrigin(destination);
     setDestination(previousOrigin);
     setSwapNonce((nonce) => nonce + 1);
+    audio.playSfx('swap');
   };
 
   return (
@@ -66,7 +70,16 @@ export const TripForm = (): React.JSX.Element => {
               <PlaceAutocomplete key={`goal-${swapNonce}`} tone="dark" label="Mål" placeholder="Vart vill du komma?" initialPlace={destination} onChange={setDestination} />
             </div>
 
-            <button className={styles.startBtn} type="submit" disabled={!origin || !destination}>
+            <button
+              className={styles.startBtn}
+              type="submit"
+              disabled={!origin || !destination}
+              onPointerEnter={(event) => {
+                if (event.pointerType === 'mouse') {
+                  audio.playSfx('hover');
+                }
+              }}
+            >
               Starta omvägen
               <span className={styles.arrow} aria-hidden="true">
                 ▶

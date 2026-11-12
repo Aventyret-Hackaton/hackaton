@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Vector3 } from 'three';
 
+import { useGameAudio } from '@/components/AudioProvider';
 import { ArrivalConfetti } from '@/components/globe/ArrivalConfetti';
 import { pixelFont } from '@/components/globe/pixelFont';
 import { RouteCaption } from '@/components/globe/RouteCaption';
@@ -131,6 +132,8 @@ export const TripView = ({ origin, destination, journey, onReset }: TripViewProp
   const phase = usePhase(trip?.timeline ?? null);
   const steps = useMemo(() => (trip ? buildSteps(trip.legs, journey) : buildLegSteps(journey)), [trip, journey]);
   const places = useMemo(() => ({ origin: toGlobePlace(origin), destination: toGlobePlace(destination) }), [origin, destination]);
+  const audio = useGameAudio();
+  const speedTouched = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -194,6 +197,35 @@ export const TripView = ({ origin, destination, journey, onReset }: TripViewProp
   const step = currentStep === null ? undefined : steps[currentStep];
   const idleText = phase === 'arrived' ? ARRIVED_TEXT : 'Väntar på avfärd';
 
+  // The theme tempo follows the game speed, and the UI cues follow the journey.
+  const effectiveSpeed = trip ? getEffectiveSpeed(trip.timeline, phase) : TRIP_SPEEDS[0];
+  useEffect(() => {
+    audio.setGameSpeed(effectiveSpeed);
+    if (speedTouched.current) {
+      audio.playSfx('click');
+    }
+    speedTouched.current = true;
+  }, [audio, effectiveSpeed]);
+  useEffect(() => {
+    // Slow theme while planning, the main theme once the trip is under way.
+    audio.setTheme(started ? 'main' : 'slow');
+    if (started) {
+      audio.playSfx('confirm');
+    }
+  }, [audio, started]);
+  useEffect(() => {
+    if (phase === 'arrived') {
+      audio.playSfx('confirm');
+    }
+  }, [audio, phase]);
+  useEffect(
+    () => (): void => {
+      audio.setGameSpeed(1);
+      audio.setTheme('slow');
+    },
+    [audio]
+  );
+
   return (
     <div className={`${pixelFont.variable} ${styles.root}`}>
       <TitleBar />
@@ -232,7 +264,14 @@ export const TripView = ({ origin, destination, journey, onReset }: TripViewProp
             />
           )}
         </div>
-        <button type="button" className={styles.reset} onClick={onReset}>
+        <button
+          type="button"
+          className={styles.reset}
+          onClick={() => {
+            audio.playSfx('back');
+            onReset();
+          }}
+        >
           En gång till. Av oklara skäl.
         </button>
       </section>

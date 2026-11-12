@@ -1,0 +1,27 @@
+.toggle {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 50;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  line-height: 1;
+  color: #fff0c2;
+  background: #10213a;
+  border: 2px solid #fff0c2;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.3);
+}
+
+.toggle[aria-pressed='true'] {
+  color: #f46b59;
+  border-color: #f46b59;
+}
+
+.toggle:hover {
+  background: #1b3a5e;
+}

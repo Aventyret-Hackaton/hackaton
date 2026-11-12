@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 
+import { useGameAudio } from '@/components/AudioProvider';
 import type { Place, PlaceSuggestion } from '@/lib/places';
 
 import styles from './PlaceAutocomplete.module.css';
@@ -19,6 +20,7 @@ const MIN_QUERY_LENGTH = 2;
 
 export const PlaceAutocomplete = ({ label, initialPlace, placeholder, tone = 'light', onChange }: PlaceAutocompleteProps): React.JSX.Element => {
   const id = useId();
+  const audio = useGameAudio();
   const [query, setQuery] = useState(initialPlace?.address ?? '');
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -82,6 +84,7 @@ export const PlaceAutocomplete = ({ label, initialPlace, placeholder, tone = 'li
     try {
       const response = await fetch(`/api/places/${encodeURIComponent(placeId)}?${params}`);
       if (response.status === 422) {
+        audio.playSfx('not-ready');
         setError('Platsen måste ligga i Stockholm.');
         return;
       }
@@ -90,7 +93,9 @@ export const PlaceAutocomplete = ({ label, initialPlace, placeholder, tone = 'li
       }
       const data = (await response.json()) as { place: Place };
       onChange(data.place);
+      audio.playSfx('confirm');
     } catch {
+      audio.playSfx('not-ready');
       setError('Kunde inte hämta platsen.');
     }
   };
@@ -132,6 +137,7 @@ export const PlaceAutocomplete = ({ label, initialPlace, placeholder, tone = 'li
         aria-activedescendant={activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined}
         placeholder={placeholder}
         value={query}
+        onFocus={() => audio.playSfx('focus')}
         onChange={(event) => handleInput(event.target.value)}
         onKeyDown={handleKeyDown}
       />
