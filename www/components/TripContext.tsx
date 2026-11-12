@@ -9,15 +9,20 @@ type TripPlaces = {
   destination: Place | null;
 };
 
-type TripContextValue = TripPlaces & {
+// Trips set off so far, which decides the way around the globe.
+type TripState = TripPlaces & { tripNumber: number };
+
+type TripContextValue = TripState & {
   // False until the places have been read from session storage.
   isLoaded: boolean;
   setOrigin: (place: Place | null) => void;
   setDestination: (place: Place | null) => void;
+  // Counts one more trip, so that it takes the next way around the globe.
+  startTrip: () => void;
 };
 
 const STORAGE_KEY = 'trip-places';
-const EMPTY_PLACES: TripPlaces = { origin: null, destination: null };
+const EMPTY_STATE: TripState = { origin: null, destination: null, tripNumber: 0 };
 
 const TripContext = createContext<TripContextValue | null>(null);
 
@@ -30,12 +35,12 @@ const parsePlace = (value: unknown): Place | null => {
   return isPlace ? { placeId, address, latitude, longitude } : null;
 };
 
-const parsePlaces = (stored: string | null | undefined): TripPlaces => {
+const parseState = (stored: string | null | undefined): TripState => {
   try {
-    const { origin, destination } = (JSON.parse(stored ?? 'null') ?? {}) as Record<string, unknown>;
-    return { origin: parsePlace(origin), destination: parsePlace(destination) };
+    const { origin, destination, tripNumber } = (JSON.parse(stored ?? 'null') ?? {}) as Record<string, unknown>;
+    return { origin: parsePlace(origin), destination: parsePlace(destination), tripNumber: typeof tripNumber === 'number' && tripNumber > 0 ? Math.floor(tripNumber) : 0 };
   } catch {
-    return EMPTY_PLACES;
+    return EMPTY_STATE;
   }
 };
 
@@ -64,8 +69,8 @@ const getSnapshot = (): string | null => {
 // The server has no storage, undefined marks the places as not yet loaded.
 const getServerSnapshot = (): undefined => undefined;
 
-const updatePlaces = (patch: Partial<TripPlaces>): void => {
-  cached = JSON.stringify({ ...parsePlaces(getSnapshot()), ...patch });
+const updateState = (patch: Partial<TripState>): void => {
+  cached = JSON.stringify({ ...parseState(getSnapshot()), ...patch });
   try {
     window.sessionStorage.setItem(STORAGE_KEY, cached);
   } catch {
@@ -74,12 +79,13 @@ const updatePlaces = (patch: Partial<TripPlaces>): void => {
   listeners.forEach((listener) => listener());
 };
 
-const setOrigin = (origin: Place | null): void => updatePlaces({ origin });
-const setDestination = (destination: Place | null): void => updatePlaces({ destination });
+const setOrigin = (origin: Place | null): void => updateState({ origin });
+const setDestination = (destination: Place | null): void => updateState({ destination });
+const startTrip = (): void => updateState({ tripNumber: parseState(getSnapshot()).tripNumber + 1 });
 
 export const TripProvider = ({ children }: { children: React.ReactNode }): React.JSX.Element => {
   const stored = useSyncExternalStore<string | null | undefined>(subscribe, getSnapshot, getServerSnapshot);
-  const value = useMemo(() => ({ ...parsePlaces(stored), isLoaded: stored !== undefined, setOrigin, setDestination }), [stored]);
+  const value = useMemo(() => ({ ...parseState(stored), isLoaded: stored !== undefined, setOrigin, setDestination, startTrip }), [stored]);
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;
 };
 

@@ -6,10 +6,11 @@ import { useRouter } from 'next/navigation';
 
 import { useTrip } from '@/components/TripContext';
 import { TripView } from '@/components/TripView';
+import { getJourneyPlan } from '@/lib/globe/journeys';
 
 export default function TripPage(): React.JSX.Element | null {
   const router = useRouter();
-  const { origin, destination, isLoaded } = useTrip();
+  const { origin, destination, tripNumber, isLoaded } = useTrip();
   const isMissingPlaces = isLoaded && (!origin || !destination);
 
   useEffect(() => {
@@ -24,7 +25,7 @@ export default function TripPage(): React.JSX.Element | null {
 
   return (
     <main>
-      <TripView origin={origin} destination={destination} onReset={() => router.push('/')} />
+      <TripView origin={origin} destination={destination} journey={getJourneyPlan(tripNumber)} onReset={() => router.push('/')} />
     </main>
   );
 }

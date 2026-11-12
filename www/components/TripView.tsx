@@ -10,13 +10,14 @@ import { RouteCaption } from '@/components/globe/RouteCaption';
 import { isTypingTarget } from '@/components/globe/keyboard';
 import { SCANLINE_HINT, ScanlineOverlay } from '@/components/globe/ScanlineOverlay';
 import { TitleBar } from '@/components/globe/TitleBar';
-import { type DirectiveStep, LEG_STEPS, TravelDirective } from '@/components/globe/TravelDirective';
+import { buildLegSteps, type DirectiveStep, TravelDirective } from '@/components/globe/TravelDirective';
 import type { GlobePlace, GlobeTraveller } from '@/components/globe/scene';
 import { type KeyHint, VoxelGlobe } from '@/components/globe/VoxelGlobe';
 import { StreetView } from '@/components/StreetView';
 import { latLonToUnit } from '@/lib/globe/geo';
-import { ARRIVAL_DAY, JOURNEY_SECONDS, LEGS, locateJourney, STOCKHOLM } from '@/lib/globe/journey';
-import { JOURNEY_TRACKS, trackPoint } from '@/lib/globe/track';
+import { STOCKHOLM } from '@/lib/globe/journey';
+import { type JourneyPlan, locateJourney } from '@/lib/globe/journeys';
+import { trackPoint } from '@/lib/globe/track';
 import type { Place } from '@/lib/places';
 import { estimateStreetLegs, type StreetLegs } from '@/lib/streetLegs';
 import {
@@ -40,6 +41,8 @@ import styles from './TripView.module.css';
 type TripViewProps = {
   origin: Place;
   destination: Place;
+  // The way around the globe this trip takes.
+  journey: JourneyPlan;
   onReset: () => void;
 };
 
@@ -71,32 +74,32 @@ const fetchStreetLegs = async (origin: Place, destination: Place, signal: AbortS
 };
 
 // The street legs in Stockholm wrap around the legs on the globe.
-const buildSteps = ({ exit }: StreetLegs): readonly DirectiveStep[] => [
+const buildSteps = ({ exit }: StreetLegs, journey: JourneyPlan): readonly DirectiveStep[] => [
   { id: 'street-out', model: FLAGS_MODEL, time: 'Dag 1', mode: `Lämnar Stockholm · utfart ${exit.name}`, instruction: 'Åt fel håll.' },
   { id: 'jetty', model: FLAGS_MODEL, time: 'Dag 1', mode: 'Ta dig till en brygga', instruction: 'Du behöver en båt.' },
-  ...LEG_STEPS,
-  { id: 'street-in', model: FLAGS_MODEL, time: `Dag ${ARRIVAL_DAY}`, mode: 'Tillbaka i Stockholm · från Slussen', instruction: 'Sista biten.' }
+  ...buildLegSteps(journey),
+  { id: 'street-in', model: FLAGS_MODEL, time: `Dag ${journey.arrivalDay}`, mode: 'Tillbaka i Stockholm · från Slussen', instruction: 'Sista biten.' }
 ];
 
 // Where the traveller is, and on what, the given real seconds from now, for the street view.
-const getTraveller = (timeline: Timeline, aheadSeconds: number): Traveller => {
+const getTraveller = (journey: JourneyPlan, timeline: Timeline, aheadSeconds: number): Traveller => {
   const state = getTimelineState(timeline, performance.now() + aheadSeconds * 1000);
   if (state.phase !== 'globe') {
     return { modelId: 'walker', unit: STOCKHOLM_UNIT, heading: NO_HEADING, urban: true, moving: hasStarted(timeline) && state.phase !== 'arrived' };
   }
-  const { legIndex, legProgress } = locateJourney(state.progress);
-  const track = JOURNEY_TRACKS[legIndex];
+  const { legIndex, legProgress } = locateJourney(journey, state.progress);
+  const track = journey.tracks[legIndex];
   const from = trackPoint(track, legProgress - HEADING_SPAN, new Vector3());
   const heading = trackPoint(track, legProgress + HEADING_SPAN, new Vector3()).sub(from);
-  return { modelId: LEGS[legIndex].modelId, unit: trackPoint(track, legProgress, from), heading, urban: false, moving: true };
+  return { modelId: journey.legs[legIndex].modelId, unit: trackPoint(track, legProgress, from), heading, urban: false, moving: true };
 };
 
 // The globe shows the same traveller as the street view, and nobody once the trip is over.
-const getGlobeTraveller = (timeline: Timeline): GlobeTraveller | null => {
+const getGlobeTraveller = (journey: JourneyPlan, timeline: Timeline): GlobeTraveller | null => {
   if (getTimelineState(timeline, performance.now()).phase === 'arrived') {
     return null;
   }
-  const { modelId, moving } = getTraveller(timeline, 0);
+  const { modelId, moving } = getTraveller(journey, timeline, 0);
   return { modelId, moving };
 };
 
@@ -122,11 +125,11 @@ const usePhase = (timeline: Timeline | null): TripPhase | null => {
   return timeline ? phase : null;
 };
 
-export const TripView = ({ origin, destination, onReset }: TripViewProps): React.JSX.Element => {
+export const TripView = ({ origin, destination, journey, onReset }: TripViewProps): React.JSX.Element => {
   const [trip, setTrip] = useState<TripData | null>(null);
   const [legIndex, setLegIndex] = useState(0);
   const phase = usePhase(trip?.timeline ?? null);
-  const steps = useMemo(() => (trip ? buildSteps(trip.legs) : LEG_STEPS), [trip]);
+  const steps = useMemo(() => (trip ? buildSteps(trip.legs, journey) : buildLegSteps(journey)), [trip, journey]);
   const places = useMemo(() => ({ origin: toGlobePlace(origin), destination: toGlobePlace(destination) }), [origin, destination]);
 
   useEffect(() => {
@@ -142,7 +145,7 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
             speed: TRIP_SPEEDS[0],
             outboundSeconds: legs.outbound.durationSeconds,
             jettySeconds: legs.jetty.durationSeconds,
-            globeSeconds: JOURNEY_SECONDS,
+            globeSeconds: journey.seconds,
             inboundSeconds: legs.inbound.durationSeconds
           }
         });
@@ -150,7 +153,7 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
     };
     fetchStreetLegs(origin, destination, controller.signal).then(start, () => start(estimateStreetLegs(origin, destination)));
     return (): void => controller.abort();
-  }, [origin, destination]);
+  }, [origin, destination, journey]);
 
   // Space sets the trip off. S steps the speed up one notch, and back to real time after the fastest allowed.
   useEffect(() => {
@@ -209,8 +212,9 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
             extraHints={hints}
             onLegChange={setLegIndex}
             places={places}
+            journey={journey}
             underWay={started}
-            getTraveller={(): GlobeTraveller | null => getGlobeTraveller(trip.timeline)}
+            getTraveller={(): GlobeTraveller | null => getGlobeTraveller(journey, trip.timeline)}
             caption={globeCaption}
             getProgress={(): number => getGlobeProgress(getTimelineState(trip.timeline, performance.now()))}
           />
@@ -225,7 +229,11 @@ export const TripView = ({ origin, destination, onReset }: TripViewProps): React
         <h2 className={styles.hereTitle}>Här är du</h2>
         <div className={styles.street}>
           {trip && (
-            <StreetView title={step?.mode ?? idleText} detail={step?.instruction} getTraveller={(aheadSeconds: number): Traveller => getTraveller(trip.timeline, aheadSeconds)} />
+            <StreetView
+              title={step?.mode ?? idleText}
+              detail={step?.instruction}
+              getTraveller={(aheadSeconds: number): Traveller => getTraveller(journey, trip.timeline, aheadSeconds)}
+            />
           )}
         </div>
         <dl className={styles.now}>

@@ -1,11 +1,10 @@
 import type { Vector3 } from 'three';
 
 import { type LatLon, samplePath } from './geo';
-import { LEGS } from './journey';
 
 export type Track = { points: Vector3[]; cumulative: number[]; length: number };
 
-const buildTrack = (path: readonly LatLon[]): Track => {
+export const buildTrack = (path: readonly LatLon[]): Track => {
   const points = samplePath(path, 0.5);
   const cumulative = [0];
   for (let index = 1; index < points.length; index += 1) {
@@ -28,5 +27,3 @@ export const trackPoint = (track: Track, fraction: number, target: Vector3): Vec
     .lerp(track.points[index], t)
     .normalize();
 };
-
-export const JOURNEY_TRACKS: readonly Track[] = LEGS.map((leg) => buildTrack(leg.path));
